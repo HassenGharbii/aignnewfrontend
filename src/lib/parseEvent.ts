@@ -15,8 +15,11 @@ function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
+/** The pipeline that produces `details` sometimes sends counts as numbers, sometimes as numeric strings — both are accepted. */
 function num(v: unknown): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
+  return null;
 }
 
 /**
@@ -24,8 +27,11 @@ function num(v: unknown): number | null {
  * run produced it: a flat "event_details"-style object, or that same object
  * wrapped under `{ event_details, people_details }` alongside a richer people
  * list. Both are normalized to ParsedDetails here.
+ *
+ * The API itself is inconsistent about whether `details` is sent as a JSON
+ * string or already parsed into an object — both are accepted here.
  */
-export function parseDetails(rawDetails: string): ParsedDetails {
+export function parseDetails(rawDetails: unknown): ParsedDetails {
   const empty: ParsedDetails = {
     title: '',
     description: '',
@@ -44,9 +50,15 @@ export function parseDetails(rawDetails: string): ParsedDetails {
   };
 
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawDetails);
-  } catch {
+  if (typeof rawDetails === 'string') {
+    try {
+      parsed = JSON.parse(rawDetails);
+    } catch {
+      return empty;
+    }
+  } else if (rawDetails && typeof rawDetails === 'object') {
+    parsed = rawDetails;
+  } else {
     return empty;
   }
   const root = asRecord(parsed);

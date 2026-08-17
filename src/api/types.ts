@@ -36,9 +36,9 @@ export interface RawEvent {
   severity: string;
   priority: string;
   region: string;
-  details: string;
-  created_at: string;
-  updated_at: string;
+  details: unknown;
+  created_at: string | null;
+  updated_at: string | null;
   classification_scores: unknown;
   sub_category_score: unknown;
 }
