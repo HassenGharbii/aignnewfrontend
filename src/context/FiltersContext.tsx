@@ -8,8 +8,16 @@ import { useDebouncedValue } from '../lib/useDebouncedValue';
 
 const EVENTS_PAGE_LIMIT = 500;
 
+/** This dashboard is dedicated to traffic incidents — every fetch is scoped to this main category. */
+const TRAFFIC_CATEGORY = 'أحداث مرورية';
+
 /** Fetches every page for one filter combination, following `total_pages` instead of trusting a single page. */
-async function fetchAllPages(params: { search?: string; region?: string; sub_category?: string }): Promise<RawEvent[]> {
+async function fetchAllPages(params: {
+  category?: string;
+  search?: string;
+  region?: string;
+  sub_category?: string;
+}): Promise<RawEvent[]> {
   const first = await api.events({ ...params, limit: EVENTS_PAGE_LIMIT, offset: 0 });
   const extraPages = Math.max(0, first.total_pages - 1);
   if (extraPages === 0) return first.data;
@@ -36,7 +44,7 @@ async function fetchFilteredEvents(search: string, regions: string[], subCategor
   const requests: Promise<RawEvent[]>[] = [];
   for (const region of regionOptions) {
     for (const sub_category of subCategoryOptions) {
-      requests.push(fetchAllPages({ search: search || undefined, region, sub_category }));
+      requests.push(fetchAllPages({ category: TRAFFIC_CATEGORY, search: search || undefined, region, sub_category }));
     }
   }
 
@@ -89,7 +97,7 @@ interface FiltersContextValue {
   hasActiveFilters: boolean;
   allEvents: ParsedEvent[];
   filteredEvents: ParsedEvent[];
-  /** Grand total across the whole dataset, independent of any active filters. */
+  /** Grand total of traffic-category events, independent of any active filters. */
   totalEventsCount: number;
   isLoading: boolean;
   isError: boolean;
@@ -198,7 +206,9 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
       filters.dateTo !== '',
     allEvents,
     filteredEvents,
-    totalEventsCount: summary?.total_events ?? allEvents.length,
+    totalEventsCount:
+      summary?.events_by_category.find((c) => isSameCategory(c.category, TRAFFIC_CATEGORY))?.count ??
+      allEvents.length,
     isLoading,
     isError,
     refetch,
