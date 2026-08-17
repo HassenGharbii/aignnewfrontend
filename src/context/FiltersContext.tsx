@@ -11,23 +11,34 @@ const EVENTS_PAGE_LIMIT = 500;
 /** This dashboard is dedicated to traffic incidents — every fetch is scoped to this main category. */
 const TRAFFIC_CATEGORY = 'أحداث مرورية';
 
-/** Fetches every page for one filter combination, following `total_pages` instead of trusting a single page. */
+/**
+ * Fetches every page for one filter combination by walking `offset` forward
+ * by however many rows actually came back — the API doesn't reliably honor
+ * the requested `limit`, so `total_pages` (computed server-side off its own,
+ * possibly much smaller, effective page size) can't be used to derive the
+ * next offset. Stops once `total_items` rows have been collected or a page
+ * comes back empty; the iteration cap is just a guard against a runaway
+ * loop if `total_items` is ever wrong.
+ */
 async function fetchAllPages(params: {
   category?: string;
   search?: string;
   region?: string;
   sub_category?: string;
 }): Promise<RawEvent[]> {
-  const first = await api.events({ ...params, limit: EVENTS_PAGE_LIMIT, offset: 0 });
-  const extraPages = Math.max(0, first.total_pages - 1);
-  if (extraPages === 0) return first.data;
+  const results: RawEvent[] = [];
+  let offset = 0;
+  let totalItems = Infinity;
 
-  const rest = await Promise.all(
-    Array.from({ length: extraPages }, (_, i) =>
-      api.events({ ...params, limit: EVENTS_PAGE_LIMIT, offset: (i + 1) * EVENTS_PAGE_LIMIT }).then((p) => p.data),
-    ),
-  );
-  return [first.data, ...rest].flat();
+  for (let i = 0; i < 2000 && offset < totalItems; i++) {
+    const page = await api.events({ ...params, limit: EVENTS_PAGE_LIMIT, offset });
+    totalItems = page.total_items;
+    if (page.data.length === 0) break;
+    results.push(...page.data);
+    offset += page.data.length;
+  }
+
+  return results;
 }
 
 /**
