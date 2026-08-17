@@ -87,13 +87,6 @@ const EMPTY_FILTERS: FiltersState = {
   dateTo: '',
 };
 
-/** yyyy-mm-dd for one calendar day ago — the default lower bound so the dashboard opens on the last day of activity. */
-function yesterdayDateString(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
-
 interface FiltersContextValue {
   filters: FiltersState;
   setSearch: (v: string) => void;
@@ -125,10 +118,7 @@ function toggleInSet(set: Set<string>, value: string): Set<string> {
 }
 
 export function FiltersProvider({ children }: { children: ReactNode }) {
-  const [filters, setFilters] = useState<FiltersState>(() => ({
-    ...EMPTY_FILTERS,
-    dateFrom: yesterdayDateString(),
-  }));
+  const [filters, setFilters] = useState<FiltersState>(EMPTY_FILTERS);
 
   const debouncedSearch = useDebouncedValue(filters.search.trim(), 300);
   const regionKey = useMemo(() => [...filters.governorates].sort(), [filters.governorates]);
