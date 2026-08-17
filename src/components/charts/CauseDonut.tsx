@@ -11,7 +11,11 @@ export function CauseDonut() {
 
   const data = useMemo(() => {
     const total = filteredEvents.length || 1;
-    return countGrouped(filteredEvents.map((e) => e.sub_category ?? 'غير مصنّف')).map(([name, value]) => ({
+    const grouped = countGrouped(filteredEvents.map((e) => e.sub_category ?? 'غير مصنّف'));
+    const top = grouped.slice(0, PALETTE.length - 1);
+    const otherCount = grouped.slice(PALETTE.length - 1).reduce((sum, [, count]) => sum + count, 0);
+    const rows = otherCount > 0 ? [...top, ['أخرى', otherCount] as [string, number]] : top;
+    return rows.map(([name, value]) => ({
       name,
       value,
       pct: Math.round((value / total) * 100),
@@ -44,15 +48,17 @@ export function CauseDonut() {
 
         <div className="flex w-full flex-1 flex-col gap-1.5">
           {data.map((d, i) => {
-            const isActive = filters.subCategories.has(d.name);
-            const isDimmed = filters.subCategories.size > 0 && !isActive;
+            const isOther = d.name === 'أخرى';
+            const isActive = !isOther && filters.subCategories.has(d.name);
+            const isDimmed = !isOther && filters.subCategories.size > 0 && !isActive;
             return (
               <button
                 key={d.name}
-                onClick={() => toggleSubCategory(d.name)}
-                className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-right transition hover:bg-white/5 ${
-                  isActive ? 'bg-white/8 ring-1 ring-white/15' : ''
-                } ${isDimmed ? 'opacity-40' : ''}`}
+                onClick={isOther ? undefined : () => toggleSubCategory(d.name)}
+                disabled={isOther}
+                className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-right transition ${
+                  isOther ? 'cursor-default' : 'hover:bg-white/5'
+                } ${isActive ? 'bg-white/8 ring-1 ring-white/15' : ''} ${isDimmed ? 'opacity-40' : ''}`}
               >
                 <span
                   className="h-2.5 w-2.5 shrink-0 rounded-full"

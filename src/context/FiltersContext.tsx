@@ -8,6 +8,20 @@ import { useDebouncedValue } from '../lib/useDebouncedValue';
 
 const EVENTS_PAGE_LIMIT = 500;
 
+/** Fetches every page for one filter combination, following `total_pages` instead of trusting a single page. */
+async function fetchAllPages(params: { search?: string; region?: string; sub_category?: string }): Promise<RawEvent[]> {
+  const first = await api.events({ ...params, limit: EVENTS_PAGE_LIMIT, offset: 0 });
+  const extraPages = Math.max(0, first.total_pages - 1);
+  if (extraPages === 0) return first.data;
+
+  const rest = await Promise.all(
+    Array.from({ length: extraPages }, (_, i) =>
+      api.events({ ...params, limit: EVENTS_PAGE_LIMIT, offset: (i + 1) * EVENTS_PAGE_LIMIT }).then((p) => p.data),
+    ),
+  );
+  return [first.data, ...rest].flat();
+}
+
 /**
  * The API takes one value per filter param, but governorate/sub-category
  * pickers allow multiple selections — so each combination of selected values
@@ -22,9 +36,7 @@ async function fetchFilteredEvents(search: string, regions: string[], subCategor
   const requests: Promise<RawEvent[]>[] = [];
   for (const region of regionOptions) {
     for (const sub_category of subCategoryOptions) {
-      requests.push(
-        api.events({ limit: EVENTS_PAGE_LIMIT, search: search || undefined, region, sub_category }).then((p) => p.data),
-      );
+      requests.push(fetchAllPages({ search: search || undefined, region, sub_category }));
     }
   }
 
