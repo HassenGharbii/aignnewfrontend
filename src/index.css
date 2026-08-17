@@ -1,0 +1,82 @@
+@import 'tailwindcss';
+@import 'leaflet/dist/leaflet.css';
+
+@theme {
+  --font-sans: 'Cairo', 'Segoe UI', system-ui, sans-serif;
+
+  --color-bg: #0a0f1a;
+  --color-panel: #101827;
+  --color-panel-2: #151f33;
+  --color-border: #24304a;
+  --color-accent: #22d3ee;
+  --color-accent-2: #818cf8;
+  --color-danger: #f43f5e;
+  --color-warning: #f59e0b;
+  --color-success: #34d399;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: #e7ecf5;
+  font-family: var(--font-sans);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.leaflet-container {
+  background: var(--color-panel);
+  font-family: var(--font-sans);
+}
+
+.leaflet-popup-content-wrapper {
+  background: var(--color-panel-2);
+  color: #e7ecf5;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.leaflet-popup-tip {
+  background: var(--color-panel-2);
+}
+
+.leaflet-popup-content {
+  direction: rtl;
+  margin: 0.85rem 1.1rem;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  color: #8291ab;
+  inset-inline-end: 6px;
+  top: 6px;
+}
+
+.leaflet-control-attribution {
+  background: rgba(10, 15, 26, 0.7) !important;
+  color: #8291ab !important;
+}
+.leaflet-control-attribution a {
+  color: #a5b4cb !important;
+}
+.leaflet-control-zoom a {
+  background: var(--color-panel-2) !important;
+  color: #e7ecf5 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgba(244, 63, 94, 0);
+  }
+}
+
+.severity-pulse {
+  animation: pulse-ring 1.8s ease-out infinite;
+}
