@@ -86,6 +86,26 @@ def fetch_events() -> list:
         return json.loads(SAMPLE_DATA_FILE.read_text(encoding="utf-8"))
 
 
+def dedupe_events(events: list) -> list:
+    """The same case is often relayed multiple times under the same reference as it
+    moves through the reporting chain (duty officer -> central room -> region, ...),
+    with identical event_summary text each time. Classifying/extracting it repeatedly
+    wastes LLM calls, so keep only the first occurrence per reference."""
+    seen = set()
+    deduped = []
+    for event in events:
+        reference = event.get("reference")
+        if reference is not None and reference in seen:
+            continue
+        if reference is not None:
+            seen.add(reference)
+        deduped.append(event)
+    dropped = len(events) - len(deduped)
+    if dropped:
+        log(f"[data] dropped {dropped} duplicate-reference event(s)")
+    return deduped
+
+
 # ---------------------------------------------------------------------------
 # Ollama calls (raw REST API, so this works regardless of the ollama pip client version)
 # ---------------------------------------------------------------------------
@@ -181,7 +201,7 @@ EXTRACTION_SCHEMA = {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "properties": {"العدد": {"type": "integer"}},
+                        "properties": {"العدد": {"type": "integer", "minimum": 0, "maximum": 200}},
                     },
                 },
             },
@@ -306,6 +326,7 @@ def main():
     subcategories = load_subcategories(SUBCATEGORY_FILE, CATEGORY)
     events = fetch_events()
     log(f"[data] fetched {len(events)} event(s), start={START_DATE} category={CATEGORY}")
+    events = dedupe_events(events)
 
     if args.limit:
         events = events[: args.limit]
