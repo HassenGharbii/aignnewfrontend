@@ -19,6 +19,11 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+# Windows consoles/pipes often default stdout/stderr to a non-UTF-8 codepage,
+# which crashes on Arabic text. Force UTF-8 so output never depends on locale.
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
@@ -124,96 +129,129 @@ def classify_subcategory(event_summary: str, subcategories: list) -> dict:
     return ollama_chat_json(CLASSIFICATION_MODEL, prompt, schema)
 
 
-def build_extraction_schema() -> dict:
-    return {
+ROAD_TYPES = [
+    "طرق وطنية",
+    "طرق جهوية",
+    "طرق محلية",
+    "مسالك فلاحية",
+    "طرق أخرى",
+    "طرق صغرى غير مرقّمة",
+]
+
+# Extraction is split into one schema section per Ollama call instead of one big
+# combined schema: a single request covering every nested object builds a large
+# constrained-decoding grammar, which is slow on small models and was timing out.
+# Asking for one section at a time keeps every call small and fast.
+EXTRACTION_SECTIONS = {
+    "الحالة": {
         "type": "object",
         "properties": {
-            "الحالة": {
-                "type": "object",
-                "properties": {
-                    "وضعية_الحدث": {"type": "string", "enum": ["مفتوح", "مغلق", "قيد_المعالجة"]},
-                    "الخطورة": {"type": "string", "enum": ["منخفض", "متوسط", "مرتفع", "حرج"]},
-                    "الأولوية": {"type": "integer", "minimum": 1, "maximum": 5},
-                },
-                "required": ["وضعية_الحدث", "الخطورة", "الأولوية"],
-            },
-            "الوصف": {
-                "type": "object",
-                "properties": {
-                    "تفاصيل": {"type": "string"},
-                    "كلمات_مفتاحية": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["تفاصيل", "كلمات_مفتاحية"],
-            },
-            "الموقع": {
-                "type": "object",
-                "properties": {"المنطقة": {"type": "string"}},
-                "required": ["المنطقة"],
-            },
-            "الأطراف": {
-                "type": "object",
-                "properties": {
-                    "السائقون": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "الاسم": {"type": "string"},
-                                "الرخصة": {"type": "string"},
-                            },
-                        },
-                    },
-                    "الضحايا": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {"العدد": {"type": "integer"}},
-                        },
+            "وضعية_الحدث": {"type": "string", "enum": ["مفتوح", "مغلق", "قيد_المعالجة"]},
+            "الخطورة": {"type": "string", "enum": ["منخفض", "متوسط", "مرتفع", "حرج"]},
+            "الأولوية": {"type": "integer", "minimum": 1, "maximum": 5},
+        },
+        "required": ["وضعية_الحدث", "الخطورة", "الأولوية"],
+    },
+    "الوصف": {
+        "type": "object",
+        "properties": {
+            "تفاصيل": {"type": "string"},
+            "كلمات_مفتاحية": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["تفاصيل", "كلمات_مفتاحية"],
+    },
+    "الموقع": {
+        "type": "object",
+        "properties": {
+            "المنطقة": {"type": "string"},
+            "المعتمدية": {"type": "string"},
+            "العمادة": {"type": "string"},
+        },
+        "required": ["المنطقة", "المعتمدية", "العمادة"],
+    },
+    "الأطراف": {
+        "type": "object",
+        "properties": {
+            "السائقون": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "الاسم": {"type": "string"},
+                        "الرخصة": {"type": "string"},
                     },
                 },
-                "required": ["السائقون", "الضحايا"],
             },
-            "تفاصيل_الحادث": {
-                "type": "object",
-                "properties": {
-                    "نوع_الحادث": {"type": "string"},
-                    "عدد_المركبات": {"type": "integer"},
-                    "عدد_الإصابات": {"type": "integer"},
-                    "عدد_الوفيات": {"type": "integer"},
-                    "حالة_الطريق": {"type": "string"},
-                    "مواد_خطرة_متسربة": {"type": "boolean"},
+            "الضحايا": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {"العدد": {"type": "integer"}},
                 },
-                "required": [
-                    "نوع_الحادث",
-                    "عدد_المركبات",
-                    "عدد_الإصابات",
-                    "عدد_الوفيات",
-                    "حالة_الطريق",
-                    "مواد_خطرة_متسربة",
-                ],
-            },
-            "التدقيق": {
-                "type": "object",
-                "properties": {
-                    "تم_الإبلاغ_من": {"type": "string"},
-                    "حالة_التحقق": {"type": "string", "enum": ["قيد_الانتظار", "مؤكد", "مرفوض"]},
-                },
-                "required": ["تم_الإبلاغ_من", "حالة_التحقق"],
             },
         },
-        "required": ["الحالة", "الوصف", "الموقع", "الأطراف", "تفاصيل_الحادث", "التدقيق"],
-    }
+        "required": ["السائقون", "الضحايا"],
+    },
+    "تفاصيل_الحادث": {
+        "type": "object",
+        "properties": {
+            "نوع_الحادث": {"type": "string"},
+            "عدد_المركبات": {"type": "integer"},
+            "عدد_الإصابات": {"type": "integer"},
+            "عدد_الوفيات": {"type": "integer"},
+            "حالة_الطريق": {"type": "string"},
+            "نوع_الطريق": {"type": "string", "enum": ROAD_TYPES},
+            "مواد_خطرة_متسربة": {"type": "boolean"},
+        },
+        "required": [
+            "نوع_الحادث",
+            "عدد_المركبات",
+            "عدد_الإصابات",
+            "عدد_الوفيات",
+            "حالة_الطريق",
+            "نوع_الطريق",
+            "مواد_خطرة_متسربة",
+        ],
+    },
+    "التدقيق": {
+        "type": "object",
+        "properties": {
+            "تم_الإبلاغ_من": {"type": "string"},
+            "حالة_التحقق": {"type": "string", "enum": ["قيد_الانتظار", "مؤكد", "مرفوض"]},
+        },
+        "required": ["تم_الإبلاغ_من", "حالة_التحقق"],
+    },
+}
 
 
-def extract_details(event_summary: str, subject: str) -> dict:
-    prompt = (
-        "أنت محلل بيانات لأحداث المرور. استخرج المعلومات المطلوبة حصرًا من النص التالي بدقة، "
-        "دون اختلاق معلومات غير موجودة فيه.\n\n"
-        f"عنوان الحدث: {subject}\n\n"
-        f"نص الحدث:\n{event_summary}\n\n"
-        "أعد النتيجة ككائن JSON مطابق للمخطط المطلوب فقط."
-    )
-    return ollama_chat_json(EXTRACTION_MODEL, prompt, build_extraction_schema())
+SECTION_HINTS = {
+    "الموقع": (
+        "حدد المنطقة العامة، والمعتمدية، والعمادة التي وقع فيها الحدث كما وردت "
+        "حرفيًا أو ضمنيًا في النص."
+    ),
+    "تفاصيل_الحادث": (
+        "حدد أيضًا نوع الطريق الذي وقع فيه الحادث، باختيار الأقرب دلاليًا من الفئات "
+        "المتاحة في المخطط (طرق وطنية/جهوية/محلية/مسالك فلاحية/طرق أخرى/طرق صغرى غير مرقّمة)."
+    ),
+}
+
+
+def extract_details(event_summary: str, subject: str, reference: str = None) -> dict:
+    result = {}
+    for section_name, section_schema in EXTRACTION_SECTIONS.items():
+        log(f"[extract:{section_name}] reference={reference} model={EXTRACTION_MODEL}")
+        hint = SECTION_HINTS.get(section_name)
+        prompt = (
+            "أنت محلل بيانات لأحداث المرور. استخرج حصرًا الحقل التالي من النص أدناه بدقة، "
+            "دون اختلاق معلومات غير موجودة فيه.\n\n"
+            f"الحقل المطلوب: {section_name}\n"
+            + (f"{hint}\n" if hint else "")
+            + f"\nعنوان الحدث: {subject}\n\n"
+            f"نص الحدث:\n{event_summary}\n\n"
+            "أعد النتيجة ككائن JSON مطابق للمخطط المطلوب فقط."
+        )
+        result[section_name] = ollama_chat_json(EXTRACTION_MODEL, prompt, section_schema)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +280,8 @@ def build_event_record(event: dict, subcategory: dict, extraction: dict) -> dict
         "الموقع": {
             "العنوان": event.get("event_place"),  # kept as-is, not LLM-derived
             "المنطقة": extraction.get("الموقع", {}).get("المنطقة"),
+            "المعتمدية": extraction.get("الموقع", {}).get("المعتمدية"),
+            "العمادة": extraction.get("الموقع", {}).get("العمادة"),
         },
         "الأطراف": extraction.get("الأطراف", {}),
         "تفاصيل_الحادث": extraction.get("تفاصيل_الحادث", {}),
@@ -256,11 +296,11 @@ def process_event(event: dict, subcategories: list):
         log(f"[skip] reference={event.get('reference')} has empty event_summary")
         return None
 
-    log(f"[classify] reference={event.get('reference')} model={CLASSIFICATION_MODEL}")
+    reference = event.get("reference")
+    log(f"[classify] reference={reference} model={CLASSIFICATION_MODEL}")
     subcategory = classify_subcategory(summary, subcategories)
 
-    log(f"[extract] reference={event.get('reference')} model={EXTRACTION_MODEL}")
-    extraction = extract_details(summary, event.get("subject") or "")
+    extraction = extract_details(summary, event.get("subject") or "", reference=reference)
 
     return build_event_record(event, subcategory, extraction)
 
@@ -285,8 +325,8 @@ def main():
             continue
         if record is None:
             continue
-        print(json.dumps(record, ensure_ascii=False, indent=2))
-        print()
+        print(json.dumps(record, ensure_ascii=False, indent=2), flush=True)
+        print(flush=True)
 
 
 if __name__ == "__main__":

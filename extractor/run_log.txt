@@ -1,0 +1,12 @@
+[data] USE_SAMPLE_DATA=true -> reading F:\morour\data.json.txt
+[data] fetched 5 event(s), start=2026-08-18T00:00:00 category=أحداث مرورية
+[classify] reference=010100-0550-000000 model=llama3.2:1b
+[extract:الحالة] reference=010100-0550-000000 model=llama3.2:1b
+[extract:الوصف] reference=010100-0550-000000 model=llama3.2:1b
+[extract:الموقع] reference=010100-0550-000000 model=llama3.2:1b
+[extract:الأطراف] reference=010100-0550-000000 model=llama3.2:1b
+[extract:تفاصيل_الحادث] reference=010100-0550-000000 model=llama3.2:1b
+[extract:التدقيق] reference=010100-0550-000000 model=llama3.2:1b
+[classify] reference=240000-1627-070323 model=llama3.2:1b
+[extract:الحالة] reference=240000-1627-070323 model=llama3.2:1b
+[extract:الوصف] reference=240000-1627-070323 model=llama3.2:1b
