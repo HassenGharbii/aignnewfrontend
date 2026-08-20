@@ -56,8 +56,11 @@ def poll_once(db) -> dict:
         if event_time and (latest_time is None or event_time > latest_time):
             latest_time = event_time
 
-        if crud.get_processed(db, reference) is not None:
-            continue  # already processed (or edited by a user) - never redo it
+        existing = crud.get_processed(db, reference)
+        if existing is not None and (existing.status == "done" or existing.is_edited):
+            continue  # already processed, or a user's edit — never redo either
+        # existing.status == "failed" and not edited: retry it below (transient
+        # errors like an Ollama timeout shouldn't permanently strand an event)
 
         try:
             record = pipeline.process_event(event, subcategories)

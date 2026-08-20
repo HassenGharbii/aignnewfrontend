@@ -90,7 +90,7 @@ export function TunisiaMap() {
           >
             <TileLayer
               attribution='&copy; OpenStreetMap contributors &copy; CARTO'
-              url={import.meta.env.VITE_MAP_TILE_URL}
+              url={import.meta.env.VITE_MAP_TILE_URL || 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'}
             />
             {stats.map((s) => {
               const isFiltered = filters.governorates.size > 0;

@@ -8,6 +8,7 @@ import { ChartsSection } from './components/ChartsSection';
 import { TunisiaMap } from './components/map/TunisiaMap';
 import { EventsTable } from './components/table/EventsTable';
 import { PeopleSearch } from './components/people/PeopleSearch';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function App() {
   return (
@@ -17,15 +18,31 @@ function App() {
         <Header />
         <main className="flex w-full flex-col gap-7 px-4 py-6 sm:px-6 lg:px-8">
           <section id="overview" className="scroll-mt-20 flex flex-col gap-4">
-            <KpiRow />
-            <SecondaryStatsBar />
-            <FilterBar />
-            <RecentActivityTicker />
+            <ErrorBoundary label="المؤشرات الرئيسية">
+              <KpiRow />
+            </ErrorBoundary>
+            <ErrorBoundary label="الإحصائيات الثانوية">
+              <SecondaryStatsBar />
+            </ErrorBoundary>
+            <ErrorBoundary label="التصفية">
+              <FilterBar />
+            </ErrorBoundary>
+            <ErrorBoundary label="آخر الأحداث">
+              <RecentActivityTicker />
+            </ErrorBoundary>
           </section>
-          <ChartsSection />
-          <TunisiaMap />
-          <EventsTable />
-          <PeopleSearch />
+          <ErrorBoundary label="الرسوم البيانية">
+            <ChartsSection />
+          </ErrorBoundary>
+          <ErrorBoundary label="الخريطة">
+            <TunisiaMap />
+          </ErrorBoundary>
+          <ErrorBoundary label="سجل الحوادث">
+            <EventsTable />
+          </ErrorBoundary>
+          <ErrorBoundary label="البحث عن الأشخاص">
+            <PeopleSearch />
+          </ErrorBoundary>
         </main>
       </div>
     </FiltersProvider>
