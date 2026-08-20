@@ -1,0 +1,17 @@
+.git
+.env
+.env.example
+__pycache__
+*.pyc
+run_output.json
+run_log.txt
+logoutput.txt
+New Text Document.txt
+.claude
+node_modules
+dist
+hassen
+extractor
+*.xlsx
+*.xlsm
+*.pbix

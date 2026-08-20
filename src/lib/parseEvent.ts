@@ -65,7 +65,10 @@ export function parseDetails(rawDetails: unknown): ParsedDetails {
   const flat = asRecord(root.event_details ?? root);
   const peopleDetails = asRecord(root.people_details);
 
-  const desc = asRecord(flat['الوصف']);
+  // The extraction pipeline emits عنوان/كلمات_مفتاحية at the top level, not
+  // nested under الوصف (an earlier pipeline version did) — fall back to `flat`
+  // itself so both shapes work.
+  const desc = asRecord(flat['الوصف'] ?? flat);
   const location = asRecord(flat['الموقع']);
   const classification = asRecord(flat['التصنيف']);
   const facts = asRecord(flat['تفاصيل_الحادث']);
