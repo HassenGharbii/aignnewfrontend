@@ -1,5 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import relationship
 
 from .db import Base
@@ -34,7 +33,7 @@ class ProcessedEvent(Base):
 
     id = Column(Integer, primary_key=True)
     reference = Column(String, ForeignKey("raw_events.reference"), unique=True, nullable=False, index=True)
-    data = Column(JSONB, nullable=True)
+    data = Column(JSON, nullable=True)
     classification_model = Column(String)
     extraction_model = Column(String)
     status = Column(String, default="done", nullable=False)  # done | failed

@@ -45,11 +45,13 @@ def list_events(
     query = db.query(models.ProcessedEvent).order_by(desc(models.ProcessedEvent.created_at))
     if status:
         query = query.filter(models.ProcessedEvent.status == status)
+    results = query.all()
     if subcategory:
-        query = query.filter(
-            models.ProcessedEvent.data["التصنيف"]["الصنف_الفرعي"].astext == subcategory
-        )
-    return query.offset(offset).limit(limit).all()
+        results = [
+            r for r in results
+            if ((r.data or {}).get("التصنيف") or {}).get("الصنف_الفرعي") == subcategory
+        ]
+    return results[offset : offset + limit]
 
 
 @app.get("/events/{reference}", response_model=schemas.ProcessedEventOut)
