@@ -4,6 +4,7 @@ import { GOVERNORATES } from '../data/governorates';
 import { severityTone, statusTone, verificationTone, TONE_CLASSES } from '../lib/severity';
 import { formatNumber } from '../lib/format';
 import { countGrouped } from '../lib/arabicText';
+import { MultiSelectDropdown } from './ui/MultiSelectDropdown';
 
 function PillGroup({
   options,
@@ -173,16 +174,22 @@ export function FilterBar() {
           )}
           {delegations.length > 0 && (
             <FilterGroup label="المعتمدية">
-              <div className="max-h-20 overflow-y-auto pe-1">
-                <PillGroup options={delegations} active={filters.delegations} onToggle={toggleDelegation} />
-              </div>
+              <MultiSelectDropdown
+                label="اختر المعتمدية"
+                options={delegations}
+                active={filters.delegations}
+                onToggle={toggleDelegation}
+              />
             </FilterGroup>
           )}
           {imadas.length > 0 && (
             <FilterGroup label="العمادة">
-              <div className="max-h-20 overflow-y-auto pe-1">
-                <PillGroup options={imadas} active={filters.imadas} onToggle={toggleImada} />
-              </div>
+              <MultiSelectDropdown
+                label="اختر العمادة"
+                options={imadas}
+                active={filters.imadas}
+                onToggle={toggleImada}
+              />
             </FilterGroup>
           )}
         </div>
