@@ -34,6 +34,10 @@ CATEGORY_PARAM = os.getenv("CATEGORY_PARAM", "category")
 START_DATE = os.getenv("START_DATE", "2026-08-18T00:00:00")
 CATEGORY = os.getenv("CATEGORY", "أحداث مرورية")
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "30"))
+# Confirmed from the source API's own openapi.json: /events paginates via
+# page (1-indexed) + page_size (default 50) — not offset/skip.
+EVENTS_PAGE_SIZE = int(os.getenv("EVENTS_PAGE_SIZE", "50"))
+MAX_PAGES = 1000  # safety cap, not an expected ceiling
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "120"))
@@ -75,12 +79,27 @@ def fetch_events() -> list:
         return json.loads(SAMPLE_DATA_FILE.read_text(encoding="utf-8"))
 
     url = f"{API_BASE_URL}{EVENTS_PATH}"
-    params = {START_PARAM: START_DATE, CATEGORY_PARAM: CATEGORY}
-    log(f"[api] GET {url} params={params}")
+    all_events = []
+    page = 1
     try:
-        resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        return resp.json()
+        while page <= MAX_PAGES:
+            params = {
+                START_PARAM: START_DATE,
+                CATEGORY_PARAM: CATEGORY,
+                "page": page,
+                "page_size": EVENTS_PAGE_SIZE,
+            }
+            log(f"[api] GET {url} params={params}")
+            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            batch = resp.json()
+            if not batch:
+                break
+            all_events.extend(batch)
+            if len(batch) < EVENTS_PAGE_SIZE:
+                break  # last page
+            page += 1
+        return all_events
     except requests.RequestException as exc:
         log(f"[api] request failed ({exc}); falling back to sample data at {SAMPLE_DATA_FILE}")
         return json.loads(SAMPLE_DATA_FILE.read_text(encoding="utf-8"))

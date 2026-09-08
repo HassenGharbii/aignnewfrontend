@@ -18,17 +18,35 @@ def log(*args):
     print(*args, flush=True)
 
 
+MAX_PAGES = 1000  # safety cap, not an expected ceiling
+
+
 def fetch_events(start: str) -> list:
     if config.USE_SAMPLE_DATA:
         log(f"[data] USE_SAMPLE_DATA=true -> reading {config.SAMPLE_DATA_FILE}")
         return json.loads(config.SAMPLE_DATA_FILE.read_text(encoding="utf-8"))
 
     url = f"{config.API_BASE_URL}{config.EVENTS_PATH}"
-    params = {config.START_PARAM: start, config.CATEGORY_PARAM: config.CATEGORY}
-    log(f"[api] GET {url} params={params}")
-    resp = requests.get(url, params=params, timeout=config.REQUEST_TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
+    all_events = []
+    page = 1
+    while page <= MAX_PAGES:
+        params = {
+            config.START_PARAM: start,
+            config.CATEGORY_PARAM: config.CATEGORY,
+            "page": page,
+            "page_size": config.EVENTS_PAGE_SIZE,
+        }
+        log(f"[api] GET {url} params={params}")
+        resp = requests.get(url, params=params, timeout=config.REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        batch = resp.json()
+        if not batch:
+            break
+        all_events.extend(batch)
+        if len(batch) < config.EVENTS_PAGE_SIZE:
+            break  # last page
+        page += 1
+    return all_events
 
 
 def poll_once(db) -> dict:

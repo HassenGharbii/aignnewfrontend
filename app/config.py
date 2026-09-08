@@ -15,6 +15,9 @@ CATEGORY_PARAM = os.getenv("CATEGORY_PARAM", "category")
 DEFAULT_START_DATE = os.getenv("START_DATE", "2026-08-18T00:00:00")
 CATEGORY = os.getenv("CATEGORY", "أحداث مرورية")
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "30"))
+# Confirmed from the source API's own openapi.json: /events paginates via
+# page (1-indexed) + page_size (default 50) — not offset/skip.
+EVENTS_PAGE_SIZE = int(os.getenv("EVENTS_PAGE_SIZE", "50"))
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434").rstrip("/")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "120"))
