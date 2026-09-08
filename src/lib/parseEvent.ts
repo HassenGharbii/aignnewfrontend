@@ -22,6 +22,14 @@ function num(v: unknown): number | null {
   return null;
 }
 
+/** The extraction pipeline uses "غير مذكور"/"غير محدد" as an explicit "not
+ * stated in the text" sentinel — treat those the same as empty for display
+ * and filtering, so they don't show up as a fake location/category. */
+function meaningful(v: unknown): string {
+  const s = str(v).trim();
+  return s === 'غير مذكور' || s === 'غير محدد' ? '' : s;
+}
+
 /**
  * The API's `details` blob comes in two shapes depending on which NLP pipeline
  * run produced it: a flat "event_details"-style object, or that same object
@@ -39,6 +47,8 @@ export function parseDetails(rawDetails: unknown): ParsedDetails {
     source: '',
     locationAddress: '',
     locationArea: '',
+    locationDelegation: '',
+    locationImada: '',
     confidence: null,
     verificationStatus: null,
     reportedBy: null,
@@ -102,7 +112,9 @@ export function parseDetails(rawDetails: unknown): ParsedDetails {
     keywords: Array.isArray(desc['كلمات_مفتاحية']) ? (desc['كلمات_مفتاحية'] as string[]) : [],
     source: str(flat['المصدر']),
     locationAddress: str(location['العنوان']),
-    locationArea: str(location['المنطقة']),
+    locationArea: meaningful(location['المنطقة']),
+    locationDelegation: meaningful(location['المعتمدية']),
+    locationImada: meaningful(location['العمادة']),
     confidence: num(classification['نسبة_الثقة']),
     verificationStatus: str(audit['حالة_التحقق']) || null,
     reportedBy: str(audit['تم_الإبلاغ_من']) || null,

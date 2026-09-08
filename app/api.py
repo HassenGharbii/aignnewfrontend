@@ -97,6 +97,18 @@ def trigger_poll():
         db.close()
 
 
+@app.post("/admin/reset-poll-state")
+def reset_poll_state(start: str, db: Session = Depends(get_db)):
+    """Force the worker's next poll to (re)start from this timestamp. Needed
+    because START_DATE in .env only seeds poll_state the very first time the
+    worker ever runs — after that, poll_state in the database takes over and
+    ignores .env entirely, so changing START_DATE later has no effect on its
+    own. `start` must be an ISO datetime, e.g. 2026-08-18T00:00:00."""
+    crud.get_or_create_poll_state(db, start)
+    crud.update_poll_state(db, start)
+    return {"next_start": start}
+
+
 # ---------------------------------------------------------------------------
 # Dashboard API — flat, numeric-id, paginated shape consumed by the
 # traffic-incidents-dashboard frontend (src/api/*). Everything here is

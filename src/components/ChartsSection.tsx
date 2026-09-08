@@ -1,4 +1,5 @@
 import { GovernorateBarChart } from './charts/GovernorateBarChart';
+import { AdminDivisionChart } from './charts/AdminDivisionChart';
 import { CauseDonut } from './charts/CauseDonut';
 import { SeverityStatusChart } from './charts/SeverityStatusChart';
 import { TrendChart } from './charts/TrendChart';
@@ -19,6 +20,10 @@ export function ChartsSection() {
           <GovernorateBarChart />
         </div>
         <CauseDonut />
+
+        <div className="lg:col-span-3">
+          <AdminDivisionChart />
+        </div>
 
         <div className="lg:col-span-2">
           <TrendChart />

@@ -68,6 +68,8 @@ async function fetchFilteredEvents(search: string, regions: string[], subCategor
 export interface FiltersState {
   search: string;
   governorates: Set<string>; // Governorate.ar
+  delegations: Set<string>; // المعتمدية
+  imadas: Set<string>; // العمادة
   severities: Set<string>;
   statuses: Set<string>;
   subCategories: Set<string>;
@@ -79,6 +81,8 @@ export interface FiltersState {
 const EMPTY_FILTERS: FiltersState = {
   search: '',
   governorates: new Set(),
+  delegations: new Set(),
+  imadas: new Set(),
   severities: new Set(),
   statuses: new Set(),
   subCategories: new Set(),
@@ -92,6 +96,8 @@ interface FiltersContextValue {
   setSearch: (v: string) => void;
   toggleGovernorate: (ar: string) => void;
   setGovernorate: (ar: string | null) => void;
+  toggleDelegation: (v: string) => void;
+  toggleImada: (v: string) => void;
   toggleSeverity: (v: string) => void;
   toggleStatus: (v: string) => void;
   toggleSubCategory: (v: string) => void;
@@ -148,6 +154,20 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
       if (filters.governorates.size > 0) {
         if (!e.governorate || !filters.governorates.has(e.governorate.ar)) return false;
       }
+      if (filters.delegations.size > 0) {
+        if (
+          !e.parsed.locationDelegation ||
+          ![...filters.delegations].some((v) => isSameCategory(v, e.parsed.locationDelegation))
+        )
+          return false;
+      }
+      if (filters.imadas.size > 0) {
+        if (
+          !e.parsed.locationImada ||
+          ![...filters.imadas].some((v) => isSameCategory(v, e.parsed.locationImada))
+        )
+          return false;
+      }
       if (filters.severities.size > 0 && ![...filters.severities].some((v) => isSameCategory(v, e.severity)))
         return false;
       if (filters.statuses.size > 0 && ![...filters.statuses].some((v) => isSameCategory(v, e.event_status)))
@@ -174,6 +194,8 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
           e.parsed.reportedBy,
           e.parsed.verifiedBy,
           e.parsed.source,
+          e.parsed.locationDelegation,
+          e.parsed.locationImada,
           ...e.parsed.keywords,
         ]
           .join(' ')
@@ -190,6 +212,8 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
     toggleGovernorate: (ar) => setFilters((f) => ({ ...f, governorates: toggleInSet(f.governorates, ar) })),
     setGovernorate: (ar) =>
       setFilters((f) => ({ ...f, governorates: ar ? new Set([ar]) : new Set() })),
+    toggleDelegation: (v) => setFilters((f) => ({ ...f, delegations: toggleInSet(f.delegations, v) })),
+    toggleImada: (v) => setFilters((f) => ({ ...f, imadas: toggleInSet(f.imadas, v) })),
     toggleSeverity: (v) => setFilters((f) => ({ ...f, severities: toggleInSet(f.severities, v) })),
     toggleStatus: (v) => setFilters((f) => ({ ...f, statuses: toggleInSet(f.statuses, v) })),
     toggleSubCategory: (v) => setFilters((f) => ({ ...f, subCategories: toggleInSet(f.subCategories, v) })),
@@ -199,6 +223,8 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
     hasActiveFilters:
       filters.search !== '' ||
       filters.governorates.size > 0 ||
+      filters.delegations.size > 0 ||
+      filters.imadas.size > 0 ||
       filters.severities.size > 0 ||
       filters.statuses.size > 0 ||
       filters.subCategories.size > 0 ||

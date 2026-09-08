@@ -54,6 +54,8 @@ export function FilterBar() {
   const {
     filters,
     toggleGovernorate,
+    toggleDelegation,
+    toggleImada,
     toggleSeverity,
     toggleStatus,
     toggleSubCategory,
@@ -93,6 +95,15 @@ export function FilterBar() {
     [allEvents],
   );
   const governorateOptions = GOVERNORATES.filter((g) => activeGovernorates.has(g.ar)).map((g) => g.ar);
+  const delegations = useMemo(
+    () =>
+      countGrouped(allEvents.map((e) => e.parsed.locationDelegation).filter(Boolean)).map(([name]) => name),
+    [allEvents],
+  );
+  const imadas = useMemo(
+    () => countGrouped(allEvents.map((e) => e.parsed.locationImada).filter(Boolean)).map(([name]) => name),
+    [allEvents],
+  );
 
   return (
     <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
@@ -143,7 +154,7 @@ export function FilterBar() {
         </div>
       </div>
 
-      {(subCategories.length > 1 || verifications.length > 0) && (
+      {(subCategories.length > 1 || verifications.length > 0 || delegations.length > 0 || imadas.length > 0) && (
         <div className="mt-4 grid items-start gap-4 border-t border-white/8 pt-4 sm:grid-cols-2">
           {subCategories.length > 1 && (
             <FilterGroup label="سبب/نوع الحادث">
@@ -158,6 +169,20 @@ export function FilterBar() {
                 onToggle={toggleVerification}
                 toneFor={verificationTone}
               />
+            </FilterGroup>
+          )}
+          {delegations.length > 0 && (
+            <FilterGroup label="المعتمدية">
+              <div className="max-h-20 overflow-y-auto pe-1">
+                <PillGroup options={delegations} active={filters.delegations} onToggle={toggleDelegation} />
+              </div>
+            </FilterGroup>
+          )}
+          {imadas.length > 0 && (
+            <FilterGroup label="العمادة">
+              <div className="max-h-20 overflow-y-auto pe-1">
+                <PillGroup options={imadas} active={filters.imadas} onToggle={toggleImada} />
+              </div>
             </FilterGroup>
           )}
         </div>

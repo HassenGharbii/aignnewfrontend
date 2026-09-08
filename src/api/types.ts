@@ -145,6 +145,8 @@ export interface ParsedDetails {
   source: string;
   locationAddress: string;
   locationArea: string;
+  locationDelegation: string;
+  locationImada: string;
   confidence: number | null;
   verificationStatus: string | null;
   reportedBy: string | null;
