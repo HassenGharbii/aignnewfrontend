@@ -67,7 +67,8 @@ async function fetchFilteredEvents(search: string, regions: string[], subCategor
 
 export interface FiltersState {
   search: string;
-  governorates: Set<string>; // Governorate.ar
+  governorates: Set<string>; // Governorate.ar (matched from location text)
+  regions: Set<string>; // raw region field from the API, pre-governorate-matching
   delegations: Set<string>; // المعتمدية
   imadas: Set<string>; // العمادة
   severities: Set<string>;
@@ -81,6 +82,7 @@ export interface FiltersState {
 const EMPTY_FILTERS: FiltersState = {
   search: '',
   governorates: new Set(),
+  regions: new Set(),
   delegations: new Set(),
   imadas: new Set(),
   severities: new Set(),
@@ -96,6 +98,7 @@ interface FiltersContextValue {
   setSearch: (v: string) => void;
   toggleGovernorate: (ar: string) => void;
   setGovernorate: (ar: string | null) => void;
+  toggleRegion: (v: string) => void;
   toggleDelegation: (v: string) => void;
   toggleImada: (v: string) => void;
   toggleSeverity: (v: string) => void;
@@ -153,6 +156,9 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
     return allEvents.filter((e) => {
       if (filters.governorates.size > 0) {
         if (!e.governorate || !filters.governorates.has(e.governorate.ar)) return false;
+      }
+      if (filters.regions.size > 0) {
+        if (!e.region || ![...filters.regions].some((v) => isSameCategory(v, e.region))) return false;
       }
       if (filters.delegations.size > 0) {
         if (
@@ -212,6 +218,7 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
     toggleGovernorate: (ar) => setFilters((f) => ({ ...f, governorates: toggleInSet(f.governorates, ar) })),
     setGovernorate: (ar) =>
       setFilters((f) => ({ ...f, governorates: ar ? new Set([ar]) : new Set() })),
+    toggleRegion: (v) => setFilters((f) => ({ ...f, regions: toggleInSet(f.regions, v) })),
     toggleDelegation: (v) => setFilters((f) => ({ ...f, delegations: toggleInSet(f.delegations, v) })),
     toggleImada: (v) => setFilters((f) => ({ ...f, imadas: toggleInSet(f.imadas, v) })),
     toggleSeverity: (v) => setFilters((f) => ({ ...f, severities: toggleInSet(f.severities, v) })),
@@ -223,6 +230,7 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
     hasActiveFilters:
       filters.search !== '' ||
       filters.governorates.size > 0 ||
+      filters.regions.size > 0 ||
       filters.delegations.size > 0 ||
       filters.imadas.size > 0 ||
       filters.severities.size > 0 ||

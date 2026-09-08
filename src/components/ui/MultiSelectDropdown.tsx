@@ -1,18 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
+import { TONE_DOT, type SeverityTone } from '../../lib/severity';
+import { truncate } from '../../lib/format';
 
-/** A checkbox-list dropdown for filters with too many distinct values to show
- * as a wall of pills (e.g. المعتمدية/العمادة) — multi-select, same Set<string>
- * toggle contract as PillGroup elsewhere in FilterBar. */
+/** A checkbox-list dropdown used for every FilterBar filter except the date
+ * range — multi-select, same Set<string> toggle contract PillGroup used to
+ * have. `toneFor` optionally colors each option's dot to preserve the
+ * severity/status/verification color-coding the old pills carried. */
 export function MultiSelectDropdown({
-  label,
+  label = 'خيارات',
   options,
   active,
   onToggle,
+  toneFor,
 }: {
-  label: string;
+  label?: string;
   options: string[];
   active: Set<string>;
   onToggle: (v: string) => void;
+  toneFor?: (v: string) => SeverityTone;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -32,6 +37,10 @@ export function MultiSelectDropdown({
     ? options.filter((o) => o.toLowerCase().includes(query.trim().toLowerCase()))
     : options;
 
+  const selected = [...active];
+  const buttonText =
+    selected.length === 0 ? 'الكل' : selected.length === 1 ? truncate(selected[0], 18) : `${selected.length} محددة`;
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -43,7 +52,7 @@ export function MultiSelectDropdown({
             : 'border-white/8 bg-white/[0.02] text-slate-300 hover:border-white/15'
         }`}
       >
-        <span className="truncate">{active.size > 0 ? `${label} (${active.size})` : label}</span>
+        <span className="truncate">{buttonText}</span>
         <span className={`shrink-0 text-[10px] transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
       </button>
 
@@ -55,7 +64,7 @@ export function MultiSelectDropdown({
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="بحث…"
+                placeholder={`بحث في ${label}…`}
                 className="w-full rounded-lg border border-white/8 bg-white/[0.03] px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 outline-none focus:border-cyan-500/50"
               />
             </div>
@@ -75,6 +84,7 @@ export function MultiSelectDropdown({
                   onChange={() => onToggle(opt)}
                   className="h-3.5 w-3.5 shrink-0 rounded border-white/20 bg-white/5 text-cyan-500 focus:ring-0 focus:ring-offset-0"
                 />
+                {toneFor && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${TONE_DOT[toneFor(opt)]}`} />}
                 <span className="truncate">{opt}</span>
               </label>
             ))}

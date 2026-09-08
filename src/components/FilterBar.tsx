@@ -1,46 +1,10 @@
 import { useMemo, type ReactNode } from 'react';
 import { useFilters } from '../context/FiltersContext';
 import { GOVERNORATES } from '../data/governorates';
-import { severityTone, statusTone, verificationTone, TONE_CLASSES } from '../lib/severity';
+import { severityTone, statusTone, verificationTone } from '../lib/severity';
 import { formatNumber } from '../lib/format';
 import { countGrouped } from '../lib/arabicText';
 import { MultiSelectDropdown } from './ui/MultiSelectDropdown';
-
-function PillGroup({
-  options,
-  active,
-  onToggle,
-  toneFor,
-}: {
-  options: string[];
-  active: Set<string>;
-  onToggle: (v: string) => void;
-  toneFor?: (v: string) => keyof typeof TONE_CLASSES;
-}) {
-  if (options.length === 0) return <span className="text-xs text-slate-600">—</span>;
-  return (
-    <div className="flex flex-wrap items-start gap-1.5">
-      {options.map((opt) => {
-        const isActive = active.has(opt);
-        const tone = toneFor ? toneFor(opt) : 'neutral';
-        return (
-          <button
-            key={opt}
-            title={opt}
-            onClick={() => onToggle(opt)}
-            className={`max-w-[220px] truncate rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap transition ${
-              isActive
-                ? TONE_CLASSES[tone]
-                : 'border-white/8 bg-white/[0.02] text-slate-400 hover:border-white/15 hover:text-slate-200'
-            }`}
-          >
-            {opt}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -55,6 +19,7 @@ export function FilterBar() {
   const {
     filters,
     toggleGovernorate,
+    toggleRegion,
     toggleDelegation,
     toggleImada,
     toggleSeverity,
@@ -96,6 +61,10 @@ export function FilterBar() {
     [allEvents],
   );
   const governorateOptions = GOVERNORATES.filter((g) => activeGovernorates.has(g.ar)).map((g) => g.ar);
+  const regions = useMemo(
+    () => countGrouped(allEvents.map((e) => e.region).filter(Boolean)).map(([name]) => name),
+    [allEvents],
+  );
   const delegations = useMemo(
     () =>
       countGrouped(allEvents.map((e) => e.parsed.locationDelegation).filter(Boolean)).map(([name]) => name),
@@ -111,16 +80,44 @@ export function FilterBar() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="grid flex-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <FilterGroup label="الولاية">
-            <div className="max-h-20 overflow-y-auto pe-1">
-              <PillGroup options={governorateOptions} active={filters.governorates} onToggle={toggleGovernorate} />
-            </div>
+            <MultiSelectDropdown options={governorateOptions} active={filters.governorates} onToggle={toggleGovernorate} />
           </FilterGroup>
+          {regions.length > 0 && (
+            <FilterGroup label="المنطقة">
+              <MultiSelectDropdown options={regions} active={filters.regions} onToggle={toggleRegion} />
+            </FilterGroup>
+          )}
           <FilterGroup label="درجة الخطورة">
-            <PillGroup options={severities} active={filters.severities} onToggle={toggleSeverity} toneFor={severityTone} />
+            <MultiSelectDropdown options={severities} active={filters.severities} onToggle={toggleSeverity} toneFor={severityTone} />
           </FilterGroup>
           <FilterGroup label="حالة الحدث">
-            <PillGroup options={statuses} active={filters.statuses} onToggle={toggleStatus} toneFor={statusTone} />
+            <MultiSelectDropdown options={statuses} active={filters.statuses} onToggle={toggleStatus} toneFor={statusTone} />
           </FilterGroup>
+          {subCategories.length > 1 && (
+            <FilterGroup label="سبب/نوع الحادث">
+              <MultiSelectDropdown options={subCategories} active={filters.subCategories} onToggle={toggleSubCategory} />
+            </FilterGroup>
+          )}
+          {verifications.length > 0 && (
+            <FilterGroup label="حالة التحقق">
+              <MultiSelectDropdown
+                options={verifications}
+                active={filters.verifications}
+                onToggle={toggleVerification}
+                toneFor={verificationTone}
+              />
+            </FilterGroup>
+          )}
+          {delegations.length > 0 && (
+            <FilterGroup label="المعتمدية">
+              <MultiSelectDropdown options={delegations} active={filters.delegations} onToggle={toggleDelegation} />
+            </FilterGroup>
+          )}
+          {imadas.length > 0 && (
+            <FilterGroup label="العمادة">
+              <MultiSelectDropdown options={imadas} active={filters.imadas} onToggle={toggleImada} />
+            </FilterGroup>
+          )}
           <FilterGroup label="من تاريخ - إلى تاريخ">
             <div className="flex items-center gap-1.5">
               <input
@@ -154,46 +151,6 @@ export function FilterBar() {
           )}
         </div>
       </div>
-
-      {(subCategories.length > 1 || verifications.length > 0 || delegations.length > 0 || imadas.length > 0) && (
-        <div className="mt-4 grid items-start gap-4 border-t border-white/8 pt-4 sm:grid-cols-2">
-          {subCategories.length > 1 && (
-            <FilterGroup label="سبب/نوع الحادث">
-              <PillGroup options={subCategories} active={filters.subCategories} onToggle={toggleSubCategory} />
-            </FilterGroup>
-          )}
-          {verifications.length > 0 && (
-            <FilterGroup label="حالة التحقق">
-              <PillGroup
-                options={verifications}
-                active={filters.verifications}
-                onToggle={toggleVerification}
-                toneFor={verificationTone}
-              />
-            </FilterGroup>
-          )}
-          {delegations.length > 0 && (
-            <FilterGroup label="المعتمدية">
-              <MultiSelectDropdown
-                label="اختر المعتمدية"
-                options={delegations}
-                active={filters.delegations}
-                onToggle={toggleDelegation}
-              />
-            </FilterGroup>
-          )}
-          {imadas.length > 0 && (
-            <FilterGroup label="العمادة">
-              <MultiSelectDropdown
-                label="اختر العمادة"
-                options={imadas}
-                active={filters.imadas}
-                onToggle={toggleImada}
-              />
-            </FilterGroup>
-          )}
-        </div>
-      )}
     </div>
   );
 }

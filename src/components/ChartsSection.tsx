@@ -4,6 +4,7 @@ import { CauseDonut } from './charts/CauseDonut';
 import { SeverityStatusChart } from './charts/SeverityStatusChart';
 import { TrendChart } from './charts/TrendChart';
 import { TimingChart } from './charts/TimingChart';
+import { RegionTimeHeatmap } from './charts/RegionTimeHeatmap';
 import { TopSourcesChart } from './charts/TopSourcesChart';
 import { KeywordCloud } from './charts/KeywordCloud';
 import { PeopleDemographics } from './charts/PeopleDemographics';
@@ -34,6 +35,10 @@ export function ChartsSection() {
           <TimingChart />
         </div>
         <TopSourcesChart />
+
+        <div className="lg:col-span-3">
+          <RegionTimeHeatmap />
+        </div>
 
         <div className="lg:col-span-2">
           <PeopleDemographics />
