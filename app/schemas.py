@@ -38,8 +38,7 @@ class RawEventOut(BaseModel):
     fetched_at: datetime
 
 
-class PollResult(BaseModel):
-    fetched: int
-    processed: int
+class ClassifyResult(BaseModel):
+    pulled: int
+    classified: int
     failed: int
-    error: str | None = None
