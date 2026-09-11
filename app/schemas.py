@@ -38,7 +38,10 @@ class RawEventOut(BaseModel):
     fetched_at: datetime
 
 
-class ClassifyResult(BaseModel):
+class CycleResult(BaseModel):
+    fetched: int
+    stored: int
     pulled: int
     classified: int
     failed: int
+    error: str | None = None

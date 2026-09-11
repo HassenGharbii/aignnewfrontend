@@ -1,8 +1,12 @@
-"""Background loop: pull raw_events rows that have no processed_events row yet
-(or a failed one that wasn't user-edited), classify each one into a top-level
-category (and a sub-category within it, where known) and extract structured
-fields from event_summary, using Ollama, then write the result into
-processed_events.
+"""Background loop, one combined cycle per interval:
+
+1. Fetch new events from the source events API and store every one seen into
+   raw_events (fetch_new_events).
+2. Pull raw_events rows that have no processed_events row yet (or a failed one
+   that wasn't user-edited), classify each into a top-level category (and a
+   sub-category within it, where known), extract structured fields from
+   event_summary using Ollama, and write the result into processed_events
+   (classify_once).
 
 The set of top-level categories the classifier can choose from comes from
 categories.json (the declared list); sub-categories, where they've been
@@ -16,10 +20,12 @@ import json
 import os
 import re
 import time
+from datetime import datetime, timedelta
 
+import requests
 from sqlalchemy.orm import Session
 
-from . import config, models
+from . import config, crud, models
 from .db import Base, SessionLocal, engine
 from .pipeline import classify_subcategory, extract_details, ollama_chat_json
 
@@ -37,7 +43,77 @@ CATEGORIES_FILE = config.BASE_DIR / "categories.json"
 _CATEGORY_BLOCK_RE = re.compile(r'"([^"]+)"\s*:\s*\[(.*?)\]', re.DOTALL)
 _STRING_RE = re.compile(r'"([^"]+)"')
 
+MAX_PAGES = 1000  # safety cap, not an expected ceiling
 
+
+# ---------------------------------------------------------------------------
+# Step 1: fetch new events from the source API into raw_events
+# ---------------------------------------------------------------------------
+def fetch_events(start: str) -> list:
+    if config.USE_SAMPLE_DATA:
+        log(f"[data] USE_SAMPLE_DATA=true -> reading {config.SAMPLE_DATA_FILE}")
+        return json.loads(config.SAMPLE_DATA_FILE.read_text(encoding="utf-8"))
+
+    url = f"{config.API_BASE_URL}{config.EVENTS_PATH}"
+    all_events = []
+    page = 1
+    while page <= MAX_PAGES:
+        params = {
+            config.START_PARAM: start,
+            config.CATEGORY_PARAM: config.CATEGORY,
+            "page": page,
+            "page_size": config.EVENTS_PAGE_SIZE,
+        }
+        log(f"[api] GET {url} params={params}")
+        resp = requests.get(url, params=params, timeout=config.REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        batch = resp.json()
+        if not batch:
+            break
+        all_events.extend(batch)
+        if len(batch) < config.EVENTS_PAGE_SIZE:
+            break  # last page
+        page += 1
+    return all_events
+
+
+def fetch_new_events(db: Session) -> dict:
+    state = crud.get_or_create_poll_state(db, config.DEFAULT_START_DATE)
+
+    try:
+        events = fetch_events(state.next_start)
+    except requests.RequestException as exc:
+        log(f"[api] request failed: {exc}")
+        return {"fetched": 0, "stored": 0, "error": str(exc)}
+
+    stored_count = 0
+    latest_time = None
+
+    for event in events:
+        reference = event.get("reference")
+        if not reference:
+            continue
+
+        crud.upsert_raw_event(db, event)
+        stored_count += 1
+
+        event_time = event.get("time")
+        if event_time and (latest_time is None or event_time > latest_time):
+            latest_time = event_time
+
+    if latest_time:
+        next_start = (
+            datetime.fromisoformat(latest_time) - timedelta(minutes=config.POLL_OVERLAP_MINUTES)
+        ).isoformat()
+        crud.update_poll_state(db, next_start)
+
+    log(f"[fetch] fetched={len(events)} stored={stored_count}")
+    return {"fetched": len(events), "stored": stored_count, "error": None}
+
+
+# ---------------------------------------------------------------------------
+# Step 2: classify + extract raw_events rows into processed_events
+# ---------------------------------------------------------------------------
 def load_categories() -> list[str]:
     """categories.json is the declared list of top-level categories the
     classifier is allowed to choose among."""
@@ -171,17 +247,32 @@ def classify_once(db: Session) -> dict:
         save(db, raw.reference, data=record, status="done", error=None)
         classified_count += 1
 
-    log(f"[worker] pulled={len(rows)} classified={classified_count} failed={failed_count}")
+    log(f"[classify] pulled={len(rows)} classified={classified_count} failed={failed_count}")
     return {"pulled": len(rows), "classified": classified_count, "failed": failed_count}
+
+
+# ---------------------------------------------------------------------------
+# Combined cycle: fetch first, then classify what's now available
+# ---------------------------------------------------------------------------
+def run_cycle(db: Session) -> dict:
+    fetch_result = fetch_new_events(db)
+    classify_result = classify_once(db)
+    result = {**fetch_result, **classify_result}
+    log(
+        f"[worker] cycle done: fetched={fetch_result['fetched']} stored={fetch_result['stored']} "
+        f"pulled={classify_result['pulled']} classified={classify_result['classified']} "
+        f"failed={classify_result['failed']}"
+    )
+    return result
 
 
 def main():
     Base.metadata.create_all(bind=engine)
-    log(f"[worker] starting, polling the database every {POLL_INTERVAL_SECONDS}s")
+    log(f"[worker] starting, running fetch+classify every {POLL_INTERVAL_SECONDS}s")
     while True:
         db = SessionLocal()
         try:
-            classify_once(db)
+            run_cycle(db)
         except Exception as exc:
             log(f"[worker] cycle failed: {exc}")
         finally:

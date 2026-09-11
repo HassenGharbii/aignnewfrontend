@@ -85,14 +85,14 @@ def update_event(reference: str, update: schemas.ProcessedEventUpdate, db: Sessi
     return processed
 
 
-@app.post("/events/poll", response_model=schemas.ClassifyResult)
+@app.post("/events/poll", response_model=schemas.CycleResult)
 def trigger_poll():
-    """Run one classify cycle immediately instead of waiting for the worker's interval."""
+    """Run one fetch+classify cycle immediately instead of waiting for the worker's interval."""
     from . import worker
 
     db = SessionLocal()
     try:
-        return worker.classify_once(db)
+        return worker.run_cycle(db)
     finally:
         db.close()
 
