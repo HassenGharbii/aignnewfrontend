@@ -11,7 +11,6 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://morour:morour@db
 API_BASE_URL = os.getenv("API_BASE_URL", "http://172.19.0.37:8003").rstrip("/")
 EVENTS_PATH = os.getenv("EVENTS_PATH", "/events")
 START_PARAM = os.getenv("START_PARAM", "start")
-CATEGORY_PARAM = os.getenv("CATEGORY_PARAM", "category")
 DEFAULT_START_DATE = os.getenv("START_DATE", "2026-08-18T00:00:00")
 CATEGORY = os.getenv("CATEGORY", "أحداث مرورية")
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "30"))

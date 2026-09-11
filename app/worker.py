@@ -1,7 +1,11 @@
-"""Background loop, one combined cycle per interval:
+"""Background worker.
 
-1. Fetch new events from the source events API and store every one seen into
-   raw_events (fetch_new_events).
+On startup (unless BACKFILL_ON_START=false) it re-classifies every record
+already in raw_events, skipping ones a user edited by hand (backfill_all).
+Then it loops, one combined cycle per interval:
+
+1. Fetch new events from the source events API, all categories, and store every
+   one seen into raw_events (fetch_new_events).
 2. Pull raw_events rows that have no processed_events row yet (or a failed one
    that wasn't user-edited), classify each into a top-level category (and a
    sub-category within it, where known), extract structured fields from
@@ -23,6 +27,7 @@ import time
 from datetime import datetime, timedelta
 
 import requests
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from . import config, crud, models
@@ -35,8 +40,9 @@ def log(*args):
 
 
 POLL_INTERVAL_SECONDS = config.POLL_INTERVAL_SECONDS
-# How many unclassified rows to pull from the database per cycle.
+# How many rows to pull from the database per query.
 BATCH_SIZE = int(os.getenv("WORKER_BATCH_SIZE", "20"))
+BACKFILL_ON_START = os.getenv("BACKFILL_ON_START", "true").strip().lower() in ("1", "true", "yes")
 
 CATEGORIES_FILE = config.BASE_DIR / "categories.json"
 
@@ -47,7 +53,7 @@ MAX_PAGES = 1000  # safety cap, not an expected ceiling
 
 
 # ---------------------------------------------------------------------------
-# Step 1: fetch new events from the source API into raw_events
+# Fetch new events from the source API into raw_events
 # ---------------------------------------------------------------------------
 def fetch_events(start: str) -> list:
     if config.USE_SAMPLE_DATA:
@@ -58,9 +64,10 @@ def fetch_events(start: str) -> list:
     all_events = []
     page = 1
     while page <= MAX_PAGES:
+        # No category filter: the source category is usually empty, so the
+        # classifier assigns it instead.
         params = {
             config.START_PARAM: start,
-            config.CATEGORY_PARAM: config.CATEGORY,
             "page": page,
             "page_size": config.EVENTS_PAGE_SIZE,
         }
@@ -112,7 +119,7 @@ def fetch_new_events(db: Session) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Step 2: classify + extract raw_events rows into processed_events
+# Classify + extract raw_events rows into processed_events
 # ---------------------------------------------------------------------------
 def load_categories() -> list[str]:
     """categories.json is the declared list of top-level categories the
@@ -212,6 +219,39 @@ def save(db: Session, reference: str, data: dict | None, status: str, error: str
     db.commit()
 
 
+def classify_row(db: Session, raw: models.RawEvent, categories: list[str], category_map: dict) -> bool | None:
+    """Classify one raw_events row and save the result. Returns True on success,
+    False on failure, None if skipped because event_summary is empty."""
+    summary = (raw.event_summary or "").strip()
+    if not summary:
+        return None
+
+    subject = raw.subject or ""
+    try:
+        log(f"[classify] reference={raw.reference} model={config.CLASSIFICATION_MODEL}")
+        category_result = classify_category(summary, subject, categories)
+        category = category_result["الصنف_الرئيسي"]
+        subcategories = category_map.get(category)
+        if subcategories:
+            subcategory = classify_subcategory(summary, subject, subcategories)
+        else:
+            # No sub-category list declared yet for this category (see
+            # subcategory.txt) — classify at the category level only.
+            subcategory = {"الصنف_الفرعي": None, "نسبة_الثقة": category_result.get("نسبة_الثقة")}
+        extraction = extract_details(summary, subject, reference=raw.reference)
+        record = build_record(raw, category, subcategory, extraction)
+    except Exception as exc:
+        log(f"[error] reference={raw.reference}: {exc}")
+        existing = db.query(models.ProcessedEvent).filter_by(reference=raw.reference).first()
+        # A failed re-classification must not wipe out a record that was already classified.
+        if existing is None or existing.status != "done":
+            save(db, raw.reference, data=None, status="failed", error=str(exc))
+        return False
+
+    save(db, raw.reference, data=record, status="done", error=None)
+    return True
+
+
 def classify_once(db: Session) -> dict:
     categories = load_categories()
     category_map = load_category_map()
@@ -220,35 +260,52 @@ def classify_once(db: Session) -> dict:
     classified_count = 0
     failed_count = 0
     for raw in rows:
-        summary = (raw.event_summary or "").strip()
-        if not summary:
-            continue
-
-        subject = raw.subject or ""
-        try:
-            log(f"[classify] reference={raw.reference} model={config.CLASSIFICATION_MODEL}")
-            category_result = classify_category(summary, subject, categories)
-            category = category_result["الصنف_الرئيسي"]
-            subcategories = category_map.get(category)
-            if subcategories:
-                subcategory = classify_subcategory(summary, subject, subcategories)
-            else:
-                # No sub-category list declared yet for this category (see
-                # subcategory.txt) — classify at the category level only.
-                subcategory = {"الصنف_الفرعي": None, "نسبة_الثقة": category_result.get("نسبة_الثقة")}
-            extraction = extract_details(summary, subject, reference=raw.reference)
-            record = build_record(raw, category, subcategory, extraction)
-        except Exception as exc:
-            log(f"[error] reference={raw.reference}: {exc}")
-            save(db, raw.reference, data=None, status="failed", error=str(exc))
+        outcome = classify_row(db, raw, categories, category_map)
+        if outcome is True:
+            classified_count += 1
+        elif outcome is False:
             failed_count += 1
-            continue
-
-        save(db, raw.reference, data=record, status="done", error=None)
-        classified_count += 1
 
     log(f"[classify] pulled={len(rows)} classified={classified_count} failed={failed_count}")
     return {"pulled": len(rows), "classified": classified_count, "failed": failed_count}
+
+
+def backfill_all(db: Session) -> dict:
+    """Re-classify every raw_events row once, oldest id first, skipping records
+    a user edited by hand. Pages by id so no row is picked up twice."""
+    categories = load_categories()
+    category_map = load_category_map()
+    candidates = (
+        db.query(models.RawEvent)
+        .outerjoin(models.ProcessedEvent, models.ProcessedEvent.reference == models.RawEvent.reference)
+        .filter(or_(models.ProcessedEvent.id.is_(None), models.ProcessedEvent.is_edited.is_(False)))
+    )
+    total = candidates.count()
+    log(f"[backfill] re-classifying {total} record(s)")
+
+    last_id = 0
+    seen = classified = failed = 0
+    while True:
+        rows = (
+            candidates.filter(models.RawEvent.id > last_id)
+            .order_by(models.RawEvent.id.asc())
+            .limit(BATCH_SIZE)
+            .all()
+        )
+        if not rows:
+            break
+        for raw in rows:
+            last_id = raw.id
+            seen += 1
+            outcome = classify_row(db, raw, categories, category_map)
+            if outcome is True:
+                classified += 1
+            elif outcome is False:
+                failed += 1
+        log(f"[backfill] {seen}/{total} (classified={classified} failed={failed})")
+
+    log(f"[backfill] done: total={total} classified={classified} failed={failed}")
+    return {"total": total, "classified": classified, "failed": failed}
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +325,16 @@ def run_cycle(db: Session) -> dict:
 
 def main():
     Base.metadata.create_all(bind=engine)
+
+    if BACKFILL_ON_START:
+        db = SessionLocal()
+        try:
+            backfill_all(db)
+        except Exception as exc:
+            log(f"[backfill] stopped early: {exc}")
+        finally:
+            db.close()
+
     log(f"[worker] starting, running fetch+classify every {POLL_INTERVAL_SECONDS}s")
     while True:
         db = SessionLocal()
