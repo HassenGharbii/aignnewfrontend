@@ -54,6 +54,28 @@ def log_call_stats(model: str, elapsed: float, body: dict) -> None:
     )
 
 
+def log_model_residency() -> None:
+    """Best-effort snapshot of what Ollama has loaded. A model that was evicted,
+    or that is only partly in VRAM and therefore running layers on the CPU, is
+    an order of magnitude slower — which looks identical to a hang from here."""
+    try:
+        resp = requests.get(f"{config.OLLAMA_HOST}/api/ps", timeout=5)
+        resp.raise_for_status()
+        loaded = resp.json().get("models", [])
+    except Exception as exc:
+        log(f"[ollama] could not read /api/ps: {exc}")
+        return
+
+    if not loaded:
+        log("[ollama] /api/ps: nothing loaded (models were evicted)")
+        return
+    for entry in loaded:
+        size = entry.get("size") or 0
+        vram = entry.get("size_vram") or 0
+        placement = "fully on GPU" if size and vram >= size else f"PARTLY ON CPU ({vram}/{size} in VRAM)"
+        log(f"[ollama] /api/ps: {entry.get('name')} {placement} context_length={entry.get('context_length')}")
+
+
 def ollama_chat_json(model: str, prompt: str, schema: dict) -> dict:
     url = f"{config.OLLAMA_HOST}/api/chat"
     payload = {
@@ -65,7 +87,17 @@ def ollama_chat_json(model: str, prompt: str, schema: dict) -> dict:
         "options": {"temperature": 0},
     }
     started = time.monotonic()
-    resp = requests.post(url, json=payload, timeout=config.OLLAMA_TIMEOUT)
+    try:
+        resp = requests.post(url, json=payload, timeout=config.OLLAMA_TIMEOUT)
+    except requests.Timeout:
+        # A timed-out call returns no stats at all, so record what we can about
+        # the request and the state of the server that didn't answer it.
+        log(
+            f"[ollama] TIMEOUT model={model} after={time.monotonic() - started:.1f}s "
+            f"prompt_chars={len(prompt)}"
+        )
+        log_model_residency()
+        raise
     resp.raise_for_status()
     body = resp.json()
     log_call_stats(model, time.monotonic() - started, body)
