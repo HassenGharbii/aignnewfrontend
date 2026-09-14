@@ -44,4 +44,5 @@ class CycleResult(BaseModel):
     pulled: int
     classified: int
     failed: int
+    skipped: int = 0
     error: str | None = None

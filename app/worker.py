@@ -224,6 +224,9 @@ def classify_row(db: Session, raw: models.RawEvent, categories: list[str], categ
     False on failure, None if skipped because event_summary is empty."""
     summary = (raw.event_summary or "").strip()
     if not summary:
+        # Marked, not just skipped in memory: an unmarked row is pulled again
+        # every cycle and occupies a batch slot forever.
+        save(db, raw.reference, data=None, status="skipped", error="empty event_summary")
         return None
 
     subject = raw.subject or ""
@@ -259,15 +262,26 @@ def classify_once(db: Session) -> dict:
 
     classified_count = 0
     failed_count = 0
+    skipped_count = 0
     for raw in rows:
         outcome = classify_row(db, raw, categories, category_map)
         if outcome is True:
             classified_count += 1
         elif outcome is False:
             failed_count += 1
+        else:
+            skipped_count += 1
 
-    log(f"[classify] pulled={len(rows)} classified={classified_count} failed={failed_count}")
-    return {"pulled": len(rows), "classified": classified_count, "failed": failed_count}
+    log(
+        f"[classify] pulled={len(rows)} classified={classified_count} "
+        f"failed={failed_count} skipped={skipped_count}"
+    )
+    return {
+        "pulled": len(rows),
+        "classified": classified_count,
+        "failed": failed_count,
+        "skipped": skipped_count,
+    }
 
 
 def backfill_all(db: Session) -> dict:
@@ -284,7 +298,7 @@ def backfill_all(db: Session) -> dict:
     log(f"[backfill] re-classifying {total} record(s)")
 
     last_id = 0
-    seen = classified = failed = 0
+    seen = classified = failed = skipped = 0
     while True:
         rows = (
             candidates.filter(models.RawEvent.id > last_id)
@@ -302,10 +316,12 @@ def backfill_all(db: Session) -> dict:
                 classified += 1
             elif outcome is False:
                 failed += 1
-        log(f"[backfill] {seen}/{total} (classified={classified} failed={failed})")
+            else:
+                skipped += 1
+        log(f"[backfill] {seen}/{total} (classified={classified} failed={failed} skipped={skipped})")
 
-    log(f"[backfill] done: total={total} classified={classified} failed={failed}")
-    return {"total": total, "classified": classified, "failed": failed}
+    log(f"[backfill] done: total={total} classified={classified} failed={failed} skipped={skipped}")
+    return {"total": total, "classified": classified, "failed": failed, "skipped": skipped}
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +334,7 @@ def run_cycle(db: Session) -> dict:
     log(
         f"[worker] cycle done: fetched={fetch_result['fetched']} stored={fetch_result['stored']} "
         f"pulled={classify_result['pulled']} classified={classify_result['classified']} "
-        f"failed={classify_result['failed']}"
+        f"failed={classify_result['failed']} skipped={classify_result['skipped']}"
     )
     return result
 

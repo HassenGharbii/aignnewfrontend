@@ -5,6 +5,7 @@ copied verbatim from the source event, never re-derived by the model.
 
 import json
 import re
+import time
 
 import requests
 
@@ -35,6 +36,24 @@ def load_subcategories(path, category):
 # ---------------------------------------------------------------------------
 # Ollama calls (raw REST API, so this works regardless of the ollama pip client version)
 # ---------------------------------------------------------------------------
+def log_call_stats(model: str, elapsed: float, body: dict) -> None:
+    """Ollama reports token counts and why it stopped generating. Logging them
+    tells a merely slow call apart from one that ran into the context window:
+    prompt_tokens at the loaded context size means the prompt was truncated,
+    and done_reason=length means generation was cut off rather than finishing.
+    """
+    prompt_tokens = body.get("prompt_eval_count") or 0
+    generated = body.get("eval_count") or 0
+    eval_ns = body.get("eval_duration") or 0
+    load_ns = body.get("load_duration") or 0
+    tok_s = generated / (eval_ns / 1e9) if eval_ns else 0
+    log(
+        f"[ollama] model={model} elapsed={elapsed:.1f}s load={load_ns / 1e9:.1f}s "
+        f"prompt_tokens={prompt_tokens} generated={generated} ({tok_s:.1f} tok/s) "
+        f"done_reason={body.get('done_reason')}"
+    )
+
+
 def ollama_chat_json(model: str, prompt: str, schema: dict) -> dict:
     url = f"{config.OLLAMA_HOST}/api/chat"
     payload = {
@@ -45,9 +64,12 @@ def ollama_chat_json(model: str, prompt: str, schema: dict) -> dict:
         "think": False,
         "options": {"temperature": 0},
     }
+    started = time.monotonic()
     resp = requests.post(url, json=payload, timeout=config.OLLAMA_TIMEOUT)
     resp.raise_for_status()
-    content = resp.json()["message"]["content"]
+    body = resp.json()
+    log_call_stats(model, time.monotonic() - started, body)
+    content = body["message"]["content"]
     try:
         return json.loads(content)
     except json.JSONDecodeError:

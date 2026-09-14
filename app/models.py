@@ -36,7 +36,7 @@ class ProcessedEvent(Base):
     data = Column(JSON, nullable=True)
     classification_model = Column(String)
     extraction_model = Column(String)
-    status = Column(String, default="done", nullable=False)  # done | failed
+    status = Column(String, default="done", nullable=False)  # done | failed | skipped
     error = Column(Text, nullable=True)
     is_edited = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
