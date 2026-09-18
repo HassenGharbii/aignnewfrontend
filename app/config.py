@@ -20,6 +20,12 @@ EVENTS_PAGE_SIZE = int(os.getenv("EVENTS_PAGE_SIZE", "50"))
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434").rstrip("/")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "120"))
+# Hard cap on generated tokens per call. A normal extraction is ~250-500 tokens;
+# without a cap a model stuck repeating itself runs until OLLAMA_TIMEOUT and
+# returns nothing. With it, the call ends early with done_reason=length.
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "1536"))
+# A failed row is retried on later cycles until it has failed this many times.
+MAX_CLASSIFY_ATTEMPTS = int(os.getenv("MAX_CLASSIFY_ATTEMPTS", "3"))
 CLASSIFICATION_MODEL = os.getenv("CLASSIFICATION_MODEL", "llama3.2:1b")
 EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "llama3.2:1b")
 

@@ -31,7 +31,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from . import config, crud, models
-from .db import Base, SessionLocal, engine
+from .db import SessionLocal, init_db
 from .pipeline import classify_subcategory, extract_details, ollama_chat_json
 
 
@@ -192,15 +192,23 @@ def build_record(raw: models.RawEvent, category: str, subcategory: dict, extract
 
 def fetch_unclassified(db: Session, limit: int) -> list[models.RawEvent]:
     """raw_events with no processed_events row yet, or a failed/non-edited one
-    (transient errors get retried; a user's PATCH edit is never touched)."""
+    (transient errors get retried; a user's PATCH edit is never touched).
+
+    New rows come before retries, and a row that has failed MAX_CLASSIFY_ATTEMPTS
+    times is left alone — otherwise a few inputs that always time out take the
+    front of every batch and starve everything behind them."""
     return (
         db.query(models.RawEvent)
         .outerjoin(models.ProcessedEvent, models.ProcessedEvent.reference == models.RawEvent.reference)
         .filter(
             (models.ProcessedEvent.id.is_(None))
-            | ((models.ProcessedEvent.status == "failed") & (models.ProcessedEvent.is_edited.is_(False)))
+            | (
+                (models.ProcessedEvent.status == "failed")
+                & (models.ProcessedEvent.is_edited.is_(False))
+                & (models.ProcessedEvent.attempts < config.MAX_CLASSIFY_ATTEMPTS)
+            )
         )
-        .order_by(models.RawEvent.fetched_at.asc())
+        .order_by(models.ProcessedEvent.id.isnot(None), models.RawEvent.fetched_at.asc())
         .limit(limit)
         .all()
     )
@@ -214,6 +222,12 @@ def save(db: Session, reference: str, data: dict | None, status: str, error: str
     processed.data = data
     processed.status = status
     processed.error = error
+    if status == "failed":
+        processed.attempts = (processed.attempts or 0) + 1
+        if processed.attempts >= config.MAX_CLASSIFY_ATTEMPTS:
+            log(f"[classify] reference={reference} failed {processed.attempts} times, no longer retried")
+    else:
+        processed.attempts = 0
     processed.classification_model = config.CLASSIFICATION_MODEL
     processed.extraction_model = config.EXTRACTION_MODEL
     db.commit()
@@ -340,7 +354,7 @@ def run_cycle(db: Session) -> dict:
 
 
 def main():
-    Base.metadata.create_all(bind=engine)
+    init_db()
 
     if BACKFILL_ON_START:
         db = SessionLocal()

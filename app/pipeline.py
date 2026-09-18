@@ -84,7 +84,7 @@ def ollama_chat_json(model: str, prompt: str, schema: dict) -> dict:
         "format": schema,
         "stream": False,
         "think": False,
-        "options": {"temperature": 0},
+        "options": {"temperature": 0, "num_predict": config.OLLAMA_NUM_PREDICT},
     }
     started = time.monotonic()
     try:
@@ -239,15 +239,19 @@ EXTRACTION_INSTRUCTIONS = (
 )
 
 
-def extract_details(event_summary: str, subject: str, reference: str = None) -> dict:
-    log(f"[extract] reference={reference} model={config.EXTRACTION_MODEL}")
+def build_extraction_prompt(event_summary: str, subject: str) -> str:
     # نص الحدث/عنوان الحدث come first, identical to classify_subcategory()'s prefix,
     # so Ollama can reuse the KV-cache prefill across both calls for this event.
-    prompt = (
+    return (
         f"نص الحدث:\n{event_summary}\n\n"
         f"عنوان الحدث: {subject}\n\n"
         f"{EXTRACTION_INSTRUCTIONS}"
     )
+
+
+def extract_details(event_summary: str, subject: str, reference: str = None) -> dict:
+    log(f"[extract] reference={reference} model={config.EXTRACTION_MODEL}")
+    prompt = build_extraction_prompt(event_summary, subject)
     return ollama_chat_json(config.EXTRACTION_MODEL, prompt, EXTRACTION_SCHEMA)
 
 

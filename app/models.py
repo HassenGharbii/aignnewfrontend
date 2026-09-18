@@ -38,6 +38,7 @@ class ProcessedEvent(Base):
     extraction_model = Column(String)
     status = Column(String, default="done", nullable=False)  # done | failed | skipped
     error = Column(Text, nullable=True)
+    attempts = Column(Integer, default=0, server_default="0", nullable=False)  # consecutive failures
     is_edited = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

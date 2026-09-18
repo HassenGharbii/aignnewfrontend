@@ -6,7 +6,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from . import config, crud, models, schemas, serialize
-from .db import Base, SessionLocal, engine, get_db
+from .db import SessionLocal, get_db, init_db
 
 app = FastAPI(title="Morour Traffic Events API")
 
@@ -22,7 +22,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 def on_startup():
-    Base.metadata.create_all(bind=engine)
+    init_db()
 
 
 @app.get("/health")
