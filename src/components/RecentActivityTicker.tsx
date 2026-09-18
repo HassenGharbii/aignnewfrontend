@@ -11,10 +11,14 @@ export function RecentActivityTicker() {
   const { filteredEvents } = useFilters();
   const [selected, setSelected] = useState<ParsedEvent | null>(null);
 
+  // created_at is nullable; 0 sorts those to the end, matching what
+  // new Date(null) already did here before the null case was made explicit.
+  const timestamp = (value: string | null) => (value ? new Date(value).getTime() : 0);
+
   const recent = useMemo(
     () =>
       [...filteredEvents]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .sort((a, b) => timestamp(b.created_at) - timestamp(a.created_at))
         .slice(0, 10),
     [filteredEvents],
   );
