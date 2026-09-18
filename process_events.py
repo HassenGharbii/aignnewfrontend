@@ -1,7 +1,7 @@
 """
 Fetch traffic events (أحداث مرورية) from the events API, classify each one into a
 sub-category (subcategory.txt) then extract structured fields (schemaextractevent.txt)
-from event_summary using Ollama. event_place and subject are copied verbatim from the
+from event_summary using vLLM. event_place and subject are copied verbatim from the
 source event, never re-derived by the model.
 
 Configuration lives in .env (see .env.example): API_BASE_URL, START_DATE, CATEGORY,
@@ -39,10 +39,10 @@ REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "30"))
 EVENTS_PAGE_SIZE = int(os.getenv("EVENTS_PAGE_SIZE", "50"))
 MAX_PAGES = 1000  # safety cap, not an expected ceiling
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "120"))
-CLASSIFICATION_MODEL = os.getenv("CLASSIFICATION_MODEL", "llama3.2:1b")
-EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "llama3.2:1b")
+VLLM_HOST = os.getenv("VLLM_HOST", "http://localhost:8000").rstrip("/")
+VLLM_TIMEOUT = float(os.getenv("VLLM_TIMEOUT", "300"))
+CLASSIFICATION_MODEL = os.getenv("CLASSIFICATION_MODEL", "Qwen/Qwen3-14B-AWQ")
+EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "Qwen/Qwen3-14B-AWQ")
 
 USE_SAMPLE_DATA = os.getenv("USE_SAMPLE_DATA", "false").strip().lower() in ("1", "true", "yes")
 SAMPLE_DATA_FILE = BASE_DIR / os.getenv("SAMPLE_DATA_FILE", "data.json.txt")
@@ -126,20 +126,27 @@ def dedupe_events(events: list) -> list:
 
 
 # ---------------------------------------------------------------------------
-# Ollama calls (raw REST API, so this works regardless of the ollama pip client version)
+# vLLM calls (raw REST against its OpenAI-compatible API, so no client library)
 # ---------------------------------------------------------------------------
-def ollama_chat_json(model: str, prompt: str, schema: dict) -> dict:
-    url = f"{OLLAMA_HOST}/api/chat"
+def vllm_chat_json(model: str, prompt: str, schema: dict) -> dict:
+    url = f"{VLLM_HOST}/v1/chat/completions"
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "format": schema,
+        # Guided decoding pins the output to `schema`, replacing Ollama's `format`.
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "extraction", "schema": schema},
+        },
+        "temperature": 0,
         "stream": False,
-        "options": {"temperature": 0},
+        # Qwen3 is a hybrid reasoning model; its <think> blocks are not valid
+        # under the schema, so thinking must stay off for guided decoding.
+        "chat_template_kwargs": {"enable_thinking": False},
     }
-    resp = requests.post(url, json=payload, timeout=OLLAMA_TIMEOUT)
+    resp = requests.post(url, json=payload, timeout=VLLM_TIMEOUT)
     resp.raise_for_status()
-    content = resp.json()["message"]["content"]
+    content = resp.json()["choices"][0]["message"]["content"]
     try:
         return json.loads(content)
     except json.JSONDecodeError:
@@ -168,7 +175,7 @@ def classify_subcategory(event_summary: str, subcategories: list) -> dict:
         f"نص الحدث:\n{event_summary}\n\n"
         "أعد فقط كائن JSON بالصنف الفرعي المختار (بنفس الصياغة الحرفية من القائمة أعلاه) ونسبة ثقة بين 0 و1."
     )
-    return ollama_chat_json(CLASSIFICATION_MODEL, prompt, schema)
+    return vllm_chat_json(CLASSIFICATION_MODEL, prompt, schema)
 
 
 ROAD_TYPES = [
@@ -180,7 +187,7 @@ ROAD_TYPES = [
     "طرق صغرى غير مرقّمة",
 ]
 
-# Extraction is split into one schema section per Ollama call instead of one big
+# Extraction is split into one schema section per vLLM call instead of one big
 # combined schema: a single request covering every nested object builds a large
 # constrained-decoding grammar, which is slow on small models and was timing out.
 # Asking for one section at a time keeps every call small and fast.
@@ -295,7 +302,7 @@ def extract_details(event_summary: str, subject: str, reference: str = None) -> 
             f"نص الحدث:\n{event_summary}\n\n"
             "أعد النتيجة ككائن JSON مطابق للمخطط المطلوب فقط."
         )
-        result[section_name] = ollama_chat_json(EXTRACTION_MODEL, prompt, section_schema)
+        result[section_name] = vllm_chat_json(EXTRACTION_MODEL, prompt, section_schema)
     return result
 
 
@@ -346,7 +353,7 @@ def process_event(event: dict, subcategories: list):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Classify & extract traffic events via Ollama")
+    parser = argparse.ArgumentParser(description="Classify & extract traffic events via vLLM")
     parser.add_argument("--limit", type=int, default=None, help="process only the first N events")
     args = parser.parse_args()
 

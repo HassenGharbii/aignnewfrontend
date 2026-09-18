@@ -43,26 +43,90 @@ services:
       retries: 5
       start_period: 5s
 
+  # Inference server. Unlike Ollama (which this replaced) vLLM has no native
+  # Windows build, so it runs here rather than on the host, and it keeps the
+  # model resident for the process lifetime instead of evicting it.
+  vllm:
+    image: vllm/vllm-openai:latest
+    command:
+      - "--model"
+      - "${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}"
+      # A fraction of TOTAL VRAM, not an absolute: 0.46 of 32760MiB is ~15GB,
+      # which holds the AWQ weights (~8.5GB) plus KV cache. Recalculate this if
+      # you change either the card or the model.
+      - "--gpu-memory-utilization"
+      - "${VLLM_GPU_FRACTION:-0.46}"
+      # Event texts are short; capping context leaves more of the budget as KV
+      # cache instead of reserving it for a window nothing here uses.
+      - "--max-model-len"
+      - "${VLLM_MAX_MODEL_LEN:-8192}"
+      # classify and extract for one event share a prompt prefix on purpose
+      # (see pipeline.classify_subcategory), so caching it skips a second prefill.
+      - "--enable-prefix-caching"
+    environment:
+      # Only needed for gated repos; harmless when unset.
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    volumes:
+      # Without this the weights re-download on every container recreate.
+      - hf_cache:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    # vLLM uses shared memory for its worker IPC; the default 64MB is too small.
+    ipc: host
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      # Loading a 14B takes minutes, and longer still on a cold HuggingFace
+      # cache. Failures before this elapses don't count against `retries`.
+      start_period: 1800s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Runs once and exits. /health goes green when weights are loaded, but the
+  # first schema-guided request still pays for grammar compilation — this pays
+  # it up front so the worker's first real event doesn't.
+  warmup:
+    build: .
+    env_file: .env
+    environment:
+      VLLM_HOST: http://vllm:8000
+      CLASSIFICATION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
+      EXTRACTION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
+    command: ["python", "-m", "app.warmup"]
+    restart: "no"
+    depends_on:
+      vllm:
+        condition: service_healthy
+
   api:
     build: .
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg2://morour:morour@db:5432/morour
       # .env points these at the host for the native-run workflow; inside a
-      # container "localhost" means the container itself, so override both.
+      # container "localhost" means the container itself, so override them.
       API_BASE_URL: http://proxy:8004
-      OLLAMA_HOST: http://host.docker.internal:11434
+      VLLM_HOST: http://vllm:8000
+      CLASSIFICATION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
+      EXTRACTION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
     ports:
       - "9911:9911"
+    # Deliberately NOT gated on warmup: every endpoint the dashboard uses reads
+    # from Postgres, and only /events/poll touches the model (through a lazy
+    # import). Waiting for weights to load would take the dashboard offline for
+    # minutes on every start for no benefit; an early /events/poll just errors.
     depends_on:
       db:
         condition: service_healthy
       proxy:
         condition: service_healthy
-    # Lets the container reach Ollama running on the host machine's GPU (Linux
-    # needs this mapping; Docker Desktop on Windows/Mac provides it by default).
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   worker:
     build: .
@@ -70,15 +134,17 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://morour:morour@db:5432/morour
       API_BASE_URL: http://proxy:8004
-      OLLAMA_HOST: http://host.docker.internal:11434
+      VLLM_HOST: http://vllm:8000
+      CLASSIFICATION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
+      EXTRACTION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
     command: ["python", "-m", "app.worker"]
     depends_on:
       db:
         condition: service_healthy
       proxy:
         condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      warmup:
+        condition: service_completed_successfully
 
   web:
     build:
@@ -93,6 +159,7 @@ services:
 
 volumes:
   db_data:
+  hf_cache:
 
 networks:
   default:

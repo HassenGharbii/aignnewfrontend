@@ -9,7 +9,7 @@ Then it loops, one combined cycle per interval:
 2. Pull raw_events rows that have no processed_events row yet (or a failed one
    that wasn't user-edited), classify each into a top-level category (and a
    sub-category within it, where known), extract structured fields from
-   event_summary using Ollama, and write the result into processed_events
+   event_summary using vLLM, and write the result into processed_events
    (classify_once).
 
 The set of top-level categories the classifier can choose from comes from
@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from . import config, crud, models
 from .db import SessionLocal, init_db
-from .pipeline import classify_subcategory, extract_details, ollama_chat_json
+from .pipeline import classify_subcategory, extract_details, vllm_chat_json
 
 
 def log(*args):
@@ -156,7 +156,7 @@ def classify_category(event_summary: str, subject: str, categories: list[str]) -
         "الفئات الرئيسية المتاحة:\n" + "\n".join(f"- {c}" for c in categories) + "\n\n"
         "أعد فقط كائن JSON بالصنف الرئيسي المختار (بنفس الصياغة الحرفية من القائمة أعلاه) ونسبة ثقة بين 0 و1."
     )
-    return ollama_chat_json(config.CLASSIFICATION_MODEL, prompt, schema)
+    return vllm_chat_json(config.CLASSIFICATION_MODEL, prompt, schema)
 
 
 def build_record(raw: models.RawEvent, category: str, subcategory: dict, extraction: dict) -> dict:

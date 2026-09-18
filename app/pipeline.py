@@ -1,5 +1,5 @@
 """Classify a traffic event into a sub-category (subcategory.txt) then extract
-structured fields from event_summary using Ollama. event_place and subject are
+structured fields from event_summary using vLLM. event_place and subject are
 copied verbatim from the source event, never re-derived by the model.
 """
 
@@ -34,74 +34,70 @@ def load_subcategories(path, category):
 
 
 # ---------------------------------------------------------------------------
-# Ollama calls (raw REST API, so this works regardless of the ollama pip client version)
+# vLLM calls (raw REST against its OpenAI-compatible API, so no client library)
 # ---------------------------------------------------------------------------
 def log_call_stats(model: str, elapsed: float, body: dict) -> None:
-    """Ollama reports token counts and why it stopped generating. Logging them
+    """vLLM reports token counts and why it stopped generating. Logging them
     tells a merely slow call apart from one that ran into the context window:
-    prompt_tokens at the loaded context size means the prompt was truncated,
-    and done_reason=length means generation was cut off rather than finishing.
+    prompt_tokens at --max-model-len means the prompt was truncated, and
+    finish_reason=length means generation was cut off rather than finishing.
     """
-    prompt_tokens = body.get("prompt_eval_count") or 0
-    generated = body.get("eval_count") or 0
-    eval_ns = body.get("eval_duration") or 0
-    load_ns = body.get("load_duration") or 0
-    tok_s = generated / (eval_ns / 1e9) if eval_ns else 0
+    usage = body.get("usage") or {}
+    prompt_tokens = usage.get("prompt_tokens") or 0
+    generated = usage.get("completion_tokens") or 0
+    choices = body.get("choices") or [{}]
+    tok_s = generated / elapsed if elapsed else 0
     log(
-        f"[ollama] model={model} elapsed={elapsed:.1f}s load={load_ns / 1e9:.1f}s "
+        f"[vllm] model={model} elapsed={elapsed:.1f}s "
         f"prompt_tokens={prompt_tokens} generated={generated} ({tok_s:.1f} tok/s) "
-        f"done_reason={body.get('done_reason')}"
+        f"finish_reason={choices[0].get('finish_reason')}"
     )
 
 
-def log_model_residency() -> None:
-    """Best-effort snapshot of what Ollama has loaded. A model that was evicted,
-    or that is only partly in VRAM and therefore running layers on the CPU, is
-    an order of magnitude slower — which looks identical to a hang from here."""
-    try:
-        resp = requests.get(f"{config.OLLAMA_HOST}/api/ps", timeout=5)
-        resp.raise_for_status()
-        loaded = resp.json().get("models", [])
-    except Exception as exc:
-        log(f"[ollama] could not read /api/ps: {exc}")
-        return
+def chat_payload(model: str, prompt: str, schema: dict, max_tokens: int, stream: bool = False) -> dict:
+    """Shared request body for vLLM's OpenAI-compatible /v1/chat/completions.
 
-    if not loaded:
-        log("[ollama] /api/ps: nothing loaded (models were evicted)")
-        return
-    for entry in loaded:
-        size = entry.get("size") or 0
-        vram = entry.get("size_vram") or 0
-        placement = "fully on GPU" if size and vram >= size else f"PARTLY ON CPU ({vram}/{size} in VRAM)"
-        log(f"[ollama] /api/ps: {entry.get('name')} {placement} context_length={entry.get('context_length')}")
-
-
-def ollama_chat_json(model: str, prompt: str, schema: dict) -> dict:
-    url = f"{config.OLLAMA_HOST}/api/chat"
-    payload = {
+    response_format pins the output to `schema` via guided decoding, which is
+    what replaces Ollama's `format` field. enable_thinking must stay off for
+    Qwen3: its <think> blocks are not valid under the schema, so leaving it on
+    produces empty or malformed JSON rather than a reasoned answer.
+    """
+    return {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "format": schema,
-        "stream": False,
-        "think": False,
-        "options": {"temperature": 0, "num_predict": config.OLLAMA_NUM_PREDICT},
+        "response_format": {
+            "type": "json_schema",
+            # No "strict": vLLM constrains generation from the schema either
+            # way, and strict mode additionally demands additionalProperties:
+            # false plus a complete `required` on every nested object, which
+            # EXTRACTION_SCHEMA below deliberately does not have.
+            "json_schema": {"name": "extraction", "schema": schema},
+        },
+        "temperature": 0,
+        "max_tokens": max_tokens,
+        "stream": stream,
+        "chat_template_kwargs": {"enable_thinking": config.VLLM_ENABLE_THINKING},
     }
+
+
+def vllm_chat_json(model: str, prompt: str, schema: dict) -> dict:
+    url = f"{config.VLLM_HOST}/v1/chat/completions"
+    payload = chat_payload(model, prompt, schema, config.VLLM_MAX_TOKENS)
     started = time.monotonic()
     try:
-        resp = requests.post(url, json=payload, timeout=config.OLLAMA_TIMEOUT)
+        resp = requests.post(url, json=payload, timeout=config.VLLM_TIMEOUT)
     except requests.Timeout:
         # A timed-out call returns no stats at all, so record what we can about
-        # the request and the state of the server that didn't answer it.
+        # the request that didn't come back.
         log(
-            f"[ollama] TIMEOUT model={model} after={time.monotonic() - started:.1f}s "
+            f"[vllm] TIMEOUT model={model} after={time.monotonic() - started:.1f}s "
             f"prompt_chars={len(prompt)}"
         )
-        log_model_residency()
         raise
     resp.raise_for_status()
     body = resp.json()
     log_call_stats(model, time.monotonic() - started, body)
-    content = body["message"]["content"]
+    content = body["choices"][0]["message"]["content"]
     try:
         return json.loads(content)
     except json.JSONDecodeError:
@@ -121,7 +117,7 @@ def classify_subcategory(event_summary: str, subject: str, subcategories: list) 
         "required": ["الصنف_الفرعي", "نسبة_الثقة"],
     }
     # نص الحدث/عنوان الحدث are placed first so this call shares an identical prompt
-    # prefix with extract_details() for the same event, letting Ollama reuse the
+    # prefix with extract_details() for the same event, letting vLLM reuse the
     # KV-cache prefill across both calls instead of reprocessing the text twice.
     prompt = (
         f"نص الحدث:\n{event_summary}\n\n"
@@ -134,7 +130,7 @@ def classify_subcategory(event_summary: str, subject: str, subcategories: list) 
         "الفئات الفرعية المتاحة:\n" + "\n".join(f"- {c}" for c in subcategories) + "\n\n"
         "أعد فقط كائن JSON بالصنف الفرعي المختار (بنفس الصياغة الحرفية من القائمة أعلاه) ونسبة ثقة بين 0 و1."
     )
-    return ollama_chat_json(config.CLASSIFICATION_MODEL, prompt, schema)
+    return vllm_chat_json(config.CLASSIFICATION_MODEL, prompt, schema)
 
 
 ROAD_TYPES = [
@@ -241,7 +237,7 @@ EXTRACTION_INSTRUCTIONS = (
 
 def build_extraction_prompt(event_summary: str, subject: str) -> str:
     # نص الحدث/عنوان الحدث come first, identical to classify_subcategory()'s prefix,
-    # so Ollama can reuse the KV-cache prefill across both calls for this event.
+    # so vLLM can reuse the KV-cache prefill across both calls for this event.
     return (
         f"نص الحدث:\n{event_summary}\n\n"
         f"عنوان الحدث: {subject}\n\n"
@@ -252,7 +248,7 @@ def build_extraction_prompt(event_summary: str, subject: str) -> str:
 def extract_details(event_summary: str, subject: str, reference: str = None) -> dict:
     log(f"[extract] reference={reference} model={config.EXTRACTION_MODEL}")
     prompt = build_extraction_prompt(event_summary, subject)
-    return ollama_chat_json(config.EXTRACTION_MODEL, prompt, EXTRACTION_SCHEMA)
+    return vllm_chat_json(config.EXTRACTION_MODEL, prompt, EXTRACTION_SCHEMA)
 
 
 # ---------------------------------------------------------------------------

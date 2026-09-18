@@ -16,32 +16,44 @@ import requests
 
 from . import config, models
 from .db import SessionLocal
-from .pipeline import EXTRACTION_SCHEMA, build_extraction_prompt
+from .pipeline import EXTRACTION_SCHEMA, build_extraction_prompt, chat_payload
 
 
 def stream_extraction(prompt: str, max_tokens: int) -> None:
-    payload = {
-        "model": config.EXTRACTION_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "format": EXTRACTION_SCHEMA,
-        "stream": True,
-        "think": False,
-        "options": {"temperature": 0, "num_predict": max_tokens},
-    }
+    payload = chat_payload(config.EXTRACTION_MODEL, prompt, EXTRACTION_SCHEMA, max_tokens, stream=True)
+    # stream_options is what makes vLLM emit a final usage chunk; without it a
+    # streamed response carries no token counts at all.
+    payload["stream_options"] = {"include_usage": True}
+
     started = time.monotonic()
-    with requests.post(f"{config.OLLAMA_HOST}/api/chat", json=payload, stream=True, timeout=(10, 600)) as resp:
+    url = f"{config.VLLM_HOST}/v1/chat/completions"
+    with requests.post(url, json=payload, stream=True, timeout=(10, 600)) as resp:
         resp.raise_for_status()
+        finish_reason = None
         for line in resp.iter_lines():
+            # vLLM streams server-sent events: "data: {...}" lines, blank lines
+            # between them, and a final literal "data: [DONE]".
             if not line:
                 continue
-            chunk = json.loads(line)
-            sys.stdout.write(chunk.get("message", {}).get("content", ""))
-            sys.stdout.flush()
-            if chunk.get("done"):
+            line = line.decode("utf-8") if isinstance(line, bytes) else line
+            if not line.startswith("data:"):
+                continue
+            data = line[len("data:"):].strip()
+            if data == "[DONE]":
+                break
+            chunk = json.loads(data)
+            for choice in chunk.get("choices") or []:
+                sys.stdout.write(choice.get("delta", {}).get("content") or "")
+                sys.stdout.flush()
+                finish_reason = choice.get("finish_reason") or finish_reason
+            # The usage chunk arrives last and carries an empty choices list.
+            usage = chunk.get("usage")
+            if usage:
                 print(
                     f"\n--- elapsed={time.monotonic() - started:.1f}s "
-                    f"prompt_tokens={chunk.get('prompt_eval_count')} generated={chunk.get('eval_count')} "
-                    f"done_reason={chunk.get('done_reason')}"
+                    f"prompt_tokens={usage.get('prompt_tokens')} "
+                    f"generated={usage.get('completion_tokens')} "
+                    f"finish_reason={finish_reason}"
                 )
 
 
