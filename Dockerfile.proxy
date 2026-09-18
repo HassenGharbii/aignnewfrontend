@@ -1,0 +1,13 @@
+# proxy.py is pure stdlib, so this image deliberately skips requirements.txt —
+# no point pulling fastapi/psycopg2 in for a TCP forwarder.
+FROM python:3.12-slim
+
+WORKDIR /srv
+
+COPY proxy.py .
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8004
+
+CMD ["python", "proxy.py"]
