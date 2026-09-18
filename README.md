@@ -75,6 +75,42 @@ Run it by hand with:
 docker compose run --rm warmup
 ```
 
+### Verifying vLLM on a new machine
+
+The inference path has been verified against a stub server (request shape, JSON
+parsing, SSE streaming, warm-up gating, worker cycle) but **not against real
+weights on a GPU**. On the deployment machine, check these in order:
+
+```bash
+# 1. GPU passthrough works at all
+docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+
+# 2. Start just the model server and watch it load (several minutes; the first
+#    run also downloads ~9GB)
+docker compose up vllm
+
+# 3. It reports the model it is serving
+curl -s http://localhost:8000/v1/models | jq .
+
+# 4. Warm-up completes — this is the real test of schema-guided decoding
+docker compose run --rm warmup
+
+# 5. Whole stack
+docker compose up -d
+docker compose logs -f worker
+```
+
+Things most likely to need adjusting:
+
+- **`VLLM_GPU_FRACTION`** is arithmetic, not measured. If vLLM OOMs on startup,
+  lower it; if `nvidia-smi` shows lots of VRAM idle, raise it for more KV cache.
+- **`VLLM_TIMEOUT=300`** is a guess at 14B latency. Watch the `elapsed=` field in
+  the `[vllm]` log lines and adjust.
+- **`finish_reason=length`** in those logs means `VLLM_MAX_TOKENS` is cutting
+  generation off mid-JSON — raise it.
+- **Extraction quality** is the one thing no automated check covers. Compare a
+  few `[extract]` results against the source Arabic text before trusting them.
+
 ### Source API proxy
 
 `API_BASE_URL` points at `172.19.0.37:8003`. That address falls inside Docker's
