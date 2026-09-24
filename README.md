@@ -17,7 +17,7 @@ docker compose up --build
 | `api`    | FastAPI                                 | http://localhost:9911   |
 | `worker` | Classify + extract loop                 | —                       |
 | `proxy`  | Forwarder to the source events API      | localhost:8004          |
-| `vllm`   | Inference server (Qwen3-14B-AWQ)        | http://localhost:8000   |
+| `vllm`   | Inference server (Qwen3-8B-AWQ)        | http://localhost:8000   |
 | `warmup` | One-shot model warm-up, then exits      | —                       |
 | `db`     | Postgres 16                             | localhost:5432          |
 
@@ -32,7 +32,7 @@ web image (`docker compose build web`) after changing it.
 
 ### Inference (vLLM)
 
-`vllm` serves **`Qwen/Qwen3-14B-AWQ`** through an OpenAI-compatible API and needs
+`vllm` serves **`Qwen/Qwen3-8B-AWQ`** through an OpenAI-compatible API and needs
 an NVIDIA GPU with working container passthrough. Check yours with:
 
 ```bash
@@ -40,10 +40,10 @@ docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 ```
 
 **VRAM budgeting.** `--gpu-memory-utilization` is a fraction of *total* VRAM, not
-an absolute. The default `0.46` targets ~15GB on a 32GB card, which holds the
-int4 weights (~8.5GB) plus KV cache. Recalculate it for a different card or
+an absolute. The default `0.85` targets ~13.9GB on a 16GB card (RTX 5060 Ti),
+which holds the int4 weights (~5.7GB) plus KV cache. Recalculate it for a different card or
 model — `VLLM_MODEL`, `VLLM_GPU_FRACTION` and `VLLM_MAX_MODEL_LEN` are all env
-vars, and `.env.example` lists the models that fit a 15GB budget.
+vars, and `.env.example` lists the models that fit a 16GB card.
 
 vLLM serves **one model per process**, so `VLLM_MODEL` is injected as both
 `CLASSIFICATION_MODEL` and `EXTRACTION_MODEL`; they cannot drift apart. Serving
@@ -54,7 +54,7 @@ blocks are not valid under the JSON schemas used for guided decoding. Every call
 sends `chat_template_kwargs: {enable_thinking: false}`. `VLLM_ENABLE_THINKING`
 exists for debugging only — turning it on will corrupt the extraction output.
 
-**First start is slow**: the weights (~9GB) download from HuggingFace, then load.
+**First start is slow**: the weights (~6GB) download from HuggingFace, then load.
 They're cached in the `hf_cache` volume, so later starts only pay the load. The
 healthcheck allows 30 minutes for this before it starts counting failures.
 
@@ -62,7 +62,7 @@ healthcheck allows 30 minutes for this before it starts counting failures.
 
 `/health` goes green once weights are loaded, but the first *schema-guided*
 request still pays a one-off cost the healthcheck never triggers: xgrammar
-compiling the JSON schema into a grammar. On a 14B that can take tens of
+compiling the JSON schema into a grammar. On an 8B that can take tens of
 seconds, which would otherwise land on the worker's first real event and look
 like a hang.
 
@@ -86,7 +86,7 @@ weights on a GPU**. On the deployment machine, check these in order:
 docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 
 # 2. Start just the model server and watch it load (several minutes; the first
-#    run also downloads ~9GB)
+#    run also downloads ~6GB)
 docker compose up vllm
 
 # 3. It reports the model it is serving
@@ -104,7 +104,7 @@ Things most likely to need adjusting:
 
 - **`VLLM_GPU_FRACTION`** is arithmetic, not measured. If vLLM OOMs on startup,
   lower it; if `nvidia-smi` shows lots of VRAM idle, raise it for more KV cache.
-- **`VLLM_TIMEOUT=300`** is a guess at 14B latency. Watch the `elapsed=` field in
+- **`VLLM_TIMEOUT=300`** is a guess at 8B latency. Watch the `elapsed=` field in
   the `[vllm]` log lines and adjust.
 - **`finish_reason=length`** in those logs means `VLLM_MAX_TOKENS` is cutting
   generation off mid-JSON — raise it.

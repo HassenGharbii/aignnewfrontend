@@ -41,8 +41,8 @@ MAX_PAGES = 1000  # safety cap, not an expected ceiling
 
 VLLM_HOST = os.getenv("VLLM_HOST", "http://localhost:8000").rstrip("/")
 VLLM_TIMEOUT = float(os.getenv("VLLM_TIMEOUT", "300"))
-CLASSIFICATION_MODEL = os.getenv("CLASSIFICATION_MODEL", "Qwen/Qwen3-14B-AWQ")
-EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "Qwen/Qwen3-14B-AWQ")
+CLASSIFICATION_MODEL = os.getenv("CLASSIFICATION_MODEL", "Qwen/Qwen3-8B-AWQ")
+EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "Qwen/Qwen3-8B-AWQ")
 
 USE_SAMPLE_DATA = os.getenv("USE_SAMPLE_DATA", "false").strip().lower() in ("1", "true", "yes")
 SAMPLE_DATA_FILE = BASE_DIR / os.getenv("SAMPLE_DATA_FILE", "data.json.txt")

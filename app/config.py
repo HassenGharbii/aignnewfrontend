@@ -19,7 +19,7 @@ REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "30"))
 EVENTS_PAGE_SIZE = int(os.getenv("EVENTS_PAGE_SIZE", "50"))
 
 VLLM_HOST = os.getenv("VLLM_HOST", "http://vllm:8000").rstrip("/")
-# 14B is an order of magnitude slower per call than the 1B this replaced, and a
+# An 8B is an order of magnitude slower per call than the 1B this replaced, and a
 # cold grammar compile on the first guided request adds to it — hence minutes,
 # not the 120s Ollama needed.
 VLLM_TIMEOUT = float(os.getenv("VLLM_TIMEOUT", "300"))
@@ -35,8 +35,8 @@ VLLM_ENABLE_THINKING = os.getenv("VLLM_ENABLE_THINKING", "false").strip().lower(
 MAX_CLASSIFY_ATTEMPTS = int(os.getenv("MAX_CLASSIFY_ATTEMPTS", "3"))
 # vLLM serves one model per process, so both of these must name the same model
 # unless you also run a second vLLM container for the other one.
-CLASSIFICATION_MODEL = os.getenv("CLASSIFICATION_MODEL", "Qwen/Qwen3-14B-AWQ")
-EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "Qwen/Qwen3-14B-AWQ")
+CLASSIFICATION_MODEL = os.getenv("CLASSIFICATION_MODEL", "Qwen/Qwen3-8B-AWQ")
+EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "Qwen/Qwen3-8B-AWQ")
 
 USE_SAMPLE_DATA = os.getenv("USE_SAMPLE_DATA", "false").strip().lower() in ("1", "true", "yes")
 SAMPLE_DATA_FILE = BASE_DIR / os.getenv("SAMPLE_DATA_FILE", "data.json.txt")

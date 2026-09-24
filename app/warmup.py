@@ -2,7 +2,7 @@
 
 vLLM answers /health only once weights are loaded, but the first *guided* request
 still pays a one-off cost the healthcheck never triggers: xgrammar compiles the
-JSON schema into a grammar, and CUDA graphs get captured. On a 14B that can be
+JSON schema into a grammar, and CUDA graphs get captured. On an 8B that can be
 tens of seconds, which would otherwise land on the worker's first real event and
 look like a hang.
 

@@ -50,12 +50,12 @@ services:
     image: vllm/vllm-openai:latest
     command:
       - "--model"
-      - "${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}"
-      # A fraction of TOTAL VRAM, not an absolute: 0.46 of 32760MiB is ~15GB,
-      # which holds the AWQ weights (~8.5GB) plus KV cache. Recalculate this if
-      # you change either the card or the model.
+      - "${VLLM_MODEL:-Qwen/Qwen3-8B-AWQ}"
+      # A fraction of TOTAL VRAM, not an absolute: 0.85 of 16311MiB (RTX 5060 Ti)
+      # is ~13.9GB, which holds the AWQ weights (~5.7GB) plus KV cache and leaves
+      # headroom for the desktop. Recalculate this if you change the card or model.
       - "--gpu-memory-utilization"
-      - "${VLLM_GPU_FRACTION:-0.46}"
+      - "${VLLM_GPU_FRACTION:-0.85}"
       # Event texts are short; capping context leaves more of the budget as KV
       # cache instead of reserving it for a window nothing here uses.
       - "--max-model-len"
@@ -78,7 +78,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
-      # Loading a 14B takes minutes, and longer still on a cold HuggingFace
+      # Loading an 8B takes minutes, and longer still on a cold HuggingFace
       # cache. Failures before this elapses don't count against `retries`.
       start_period: 1800s
     deploy:
@@ -97,8 +97,8 @@ services:
     env_file: .env
     environment:
       VLLM_HOST: http://vllm:8000
-      CLASSIFICATION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
-      EXTRACTION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
+      CLASSIFICATION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-8B-AWQ}
+      EXTRACTION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-8B-AWQ}
     command: ["python", "-m", "app.warmup"]
     restart: "no"
     depends_on:
@@ -114,8 +114,8 @@ services:
       # container "localhost" means the container itself, so override them.
       API_BASE_URL: http://proxy:8004
       VLLM_HOST: http://vllm:8000
-      CLASSIFICATION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
-      EXTRACTION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
+      CLASSIFICATION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-8B-AWQ}
+      EXTRACTION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-8B-AWQ}
     ports:
       - "9911:9911"
     # Deliberately NOT gated on warmup: every endpoint the dashboard uses reads
@@ -135,8 +135,8 @@ services:
       DATABASE_URL: postgresql+psycopg2://morour:morour@db:5432/morour
       API_BASE_URL: http://proxy:8004
       VLLM_HOST: http://vllm:8000
-      CLASSIFICATION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
-      EXTRACTION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
+      CLASSIFICATION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-8B-AWQ}
+      EXTRACTION_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-8B-AWQ}
     command: ["python", "-m", "app.worker"]
     depends_on:
       db:
