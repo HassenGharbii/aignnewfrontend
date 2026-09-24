@@ -3,7 +3,10 @@ FROM python:3.12-slim
 WORKDIR /srv
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Generous timeout/retries: compose builds api, worker and warmup in parallel
+# alongside web's npm ci, and on a slow link pip's 15s default times out
+# fetching the index ("from versions: none").
+RUN pip install --no-cache-dir --timeout 120 --retries 10 -r requirements.txt
 
 COPY app ./app
 # categories.json is read by worker.py at a fixed path (BASE_DIR/categories.json),
