@@ -151,7 +151,11 @@ services:
       context: .
       dockerfile: Dockerfile.web
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:9911}
+        # Deliberately not read from .env: empty makes the bundle call the API on
+        # its own origin, which nginx.conf proxies to api:9911. A baked-in
+        # localhost:9911 would point at the *viewer's* machine, breaking the
+        # dashboard for anyone not browsing from the Docker host.
+        VITE_API_BASE_URL: ""
     ports:
       - "5173:80"
     depends_on:

@@ -27,8 +27,10 @@ Only Postgres, with `api`/`worker` run natively:
 docker compose -f docker-compose.db.yml up -d
 ```
 
-`VITE_API_BASE_URL` is baked into the JS bundle at build time, so rebuild the
-web image (`docker compose build web`) after changing it.
+In the Docker stack the dashboard calls the API on its own origin and the `web`
+container's nginx proxies `/api/` and `/people/` to `api:9911`, so it works from
+any machine that can reach port 5173. `VITE_API_BASE_URL` in `.env` is only used
+by `npm run dev`; it is baked in at build time, so restart Vite after changing it.
 
 ### Inference (vLLM)
 

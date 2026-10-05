@@ -127,7 +127,7 @@ export function EventsTable() {
         {isLoading && <p className="py-10 text-center text-sm text-slate-400">جاري التحميل…</p>}
         {isError && (
           <p className="py-10 text-center text-sm text-rose-400">
-            تعذّر الاتصال بالـ API على localhost:9911 — تأكد من تشغيله.
+            تعذّر الاتصال بالـ API — تأكد من تشغيله.
           </p>
         )}
         {!isLoading && !isError && (

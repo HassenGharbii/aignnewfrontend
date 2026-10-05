@@ -6,7 +6,9 @@ import type {
   StatsSummary,
 } from './types';
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL;
+// Empty in the Docker build: the web container's nginx proxies the API on the
+// page's own origin. Set it only when the API lives elsewhere (e.g. `npm run dev`).
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
 async function getJson<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
   const url = new URL(path, API_BASE);
