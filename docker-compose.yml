@@ -47,7 +47,9 @@ services:
   # Windows build, so it runs here rather than on the host, and it keeps the
   # model resident for the process lifetime instead of evicting it.
   vllm:
-    image: vllm/vllm-openai:latest
+    # Pinned: structured-output flag names have changed between releases, and
+    # --structured-outputs-config below is verified against 0.31.0.
+    image: vllm/vllm-openai:v0.31.0
     command:
       - "--model"
       - "${VLLM_MODEL:-Qwen/Qwen3-8B-AWQ}"
@@ -63,6 +65,11 @@ services:
       # classify and extract for one event share a prompt prefix on purpose
       # (see pipeline.classify_subcategory), so caching it skips a second prefill.
       - "--enable-prefix-caching"
+      # Guided JSON otherwise permits unlimited whitespace between tokens, and
+      # Qwen3-8B can get stuck emitting it until max_tokens, leaving truncated
+      # JSON ("Expecting ',' delimiter"). Without whitespace it must keep going.
+      - "--structured-outputs-config"
+      - '{"disable_any_whitespace": true}'
     environment:
       # Only needed for gated repos; harmless when unset.
       HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
