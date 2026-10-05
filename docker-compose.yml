@@ -68,8 +68,9 @@ services:
       # Guided JSON otherwise permits unlimited whitespace between tokens, and
       # Qwen3-8B can get stuck emitting it until max_tokens, leaving truncated
       # JSON ("Expecting ',' delimiter"). Without whitespace it must keep going.
+      # The backend must be named: 0.31.0 rejects disable_any_whitespace with "auto".
       - "--structured-outputs-config"
-      - '{"disable_any_whitespace": true}'
+      - '{"backend": "xgrammar", "disable_any_whitespace": true}'
     environment:
       # Only needed for gated repos; harmless when unset.
       HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
