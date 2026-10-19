@@ -23,7 +23,6 @@ const TRAFFIC_CATEGORY = 'أحداث مرورية';
 async function fetchAllPages(params: {
   category?: string;
   search?: string;
-  region?: string;
   sub_category?: string;
 }): Promise<RawEvent[]> {
   const results: RawEvent[] = [];
@@ -42,22 +41,17 @@ async function fetchAllPages(params: {
 }
 
 /**
- * The API takes one value per filter param, but governorate/sub-category
- * pickers allow multiple selections — so each combination of selected values
- * (cartesian product across the multi-select fields) becomes its own request,
- * run in parallel and merged/deduped by id. Empty selections mean "no filter
- * for that field" and contribute a single `undefined` slot to the product.
+ * The API takes one value per filter param, but sub-category picking allows
+ * multiple selections — so each selected value becomes its own request, run
+ * in parallel and merged/deduped by id. إقليم/المنطقة/المعتمدية/العمادة are all
+ * filtered client-side only (see filteredEvents below), not fetched per-value.
  */
-async function fetchFilteredEvents(search: string, regions: string[], subCategories: string[]): Promise<RawEvent[]> {
-  const regionOptions = regions.length > 0 ? regions : [undefined];
+async function fetchFilteredEvents(search: string, subCategories: string[]): Promise<RawEvent[]> {
   const subCategoryOptions = subCategories.length > 0 ? subCategories : [undefined];
 
-  const requests: Promise<RawEvent[]>[] = [];
-  for (const region of regionOptions) {
-    for (const sub_category of subCategoryOptions) {
-      requests.push(fetchAllPages({ category: TRAFFIC_CATEGORY, search: search || undefined, region, sub_category }));
-    }
-  }
+  const requests = subCategoryOptions.map((sub_category) =>
+    fetchAllPages({ category: TRAFFIC_CATEGORY, search: search || undefined, sub_category }),
+  );
 
   const pages = await Promise.all(requests);
   const byId = new Map<number, RawEvent>();
@@ -67,8 +61,8 @@ async function fetchFilteredEvents(search: string, regions: string[], subCategor
 
 export interface FiltersState {
   search: string;
-  governorates: Set<string>; // Governorate.ar (matched from location text)
-  regions: Set<string>; // raw region field from the API, pre-governorate-matching
+  policeRegions: Set<string>; // الإقليم (police operational region)
+  policeDistricts: Set<string>; // المنطقة (police operational district)
   delegations: Set<string>; // المعتمدية
   imadas: Set<string>; // العمادة
   severities: Set<string>;
@@ -81,8 +75,8 @@ export interface FiltersState {
 
 const EMPTY_FILTERS: FiltersState = {
   search: '',
-  governorates: new Set(),
-  regions: new Set(),
+  policeRegions: new Set(),
+  policeDistricts: new Set(),
   delegations: new Set(),
   imadas: new Set(),
   severities: new Set(),
@@ -96,9 +90,8 @@ const EMPTY_FILTERS: FiltersState = {
 interface FiltersContextValue {
   filters: FiltersState;
   setSearch: (v: string) => void;
-  toggleGovernorate: (ar: string) => void;
-  setGovernorate: (ar: string | null) => void;
-  toggleRegion: (v: string) => void;
+  togglePoliceRegion: (v: string) => void;
+  togglePoliceDistrict: (v: string) => void;
   toggleDelegation: (v: string) => void;
   toggleImada: (v: string) => void;
   toggleSeverity: (v: string) => void;
@@ -130,12 +123,11 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
   const [filters, setFilters] = useState<FiltersState>(EMPTY_FILTERS);
 
   const debouncedSearch = useDebouncedValue(filters.search.trim(), 300);
-  const regionKey = useMemo(() => [...filters.governorates].sort(), [filters.governorates]);
   const subCategoryKey = useMemo(() => [...filters.subCategories].sort(), [filters.subCategories]);
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['events', debouncedSearch, regionKey, subCategoryKey],
-    queryFn: () => fetchFilteredEvents(debouncedSearch, regionKey, subCategoryKey),
+    queryKey: ['events', debouncedSearch, subCategoryKey],
+    queryFn: () => fetchFilteredEvents(debouncedSearch, subCategoryKey),
   });
 
   // Unaffected by filters — pulled once from the stats endpoint so headline
@@ -154,11 +146,11 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
     const to = filters.dateTo ? new Date(filters.dateTo) : null;
 
     return allEvents.filter((e) => {
-      if (filters.governorates.size > 0) {
-        if (!e.governorate || !filters.governorates.has(e.governorate.ar)) return false;
+      if (filters.policeRegions.size > 0) {
+        if (!e.policeRegion || !filters.policeRegions.has(e.policeRegion)) return false;
       }
-      if (filters.regions.size > 0) {
-        if (!e.region || ![...filters.regions].some((v) => isSameCategory(v, e.region))) return false;
+      if (filters.policeDistricts.size > 0) {
+        if (!e.policeDistrict || !filters.policeDistricts.has(e.policeDistrict)) return false;
       }
       if (filters.delegations.size > 0) {
         if (
@@ -195,6 +187,8 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
         const haystack = [
           e.event_title,
           e.region,
+          e.policeRegion,
+          e.policeDistrict,
           e.parsed.description,
           e.event_summary,
           e.parsed.reportedBy,
@@ -215,10 +209,8 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
   const value: FiltersContextValue = {
     filters,
     setSearch: (v) => setFilters((f) => ({ ...f, search: v })),
-    toggleGovernorate: (ar) => setFilters((f) => ({ ...f, governorates: toggleInSet(f.governorates, ar) })),
-    setGovernorate: (ar) =>
-      setFilters((f) => ({ ...f, governorates: ar ? new Set([ar]) : new Set() })),
-    toggleRegion: (v) => setFilters((f) => ({ ...f, regions: toggleInSet(f.regions, v) })),
+    togglePoliceRegion: (v) => setFilters((f) => ({ ...f, policeRegions: toggleInSet(f.policeRegions, v) })),
+    togglePoliceDistrict: (v) => setFilters((f) => ({ ...f, policeDistricts: toggleInSet(f.policeDistricts, v) })),
     toggleDelegation: (v) => setFilters((f) => ({ ...f, delegations: toggleInSet(f.delegations, v) })),
     toggleImada: (v) => setFilters((f) => ({ ...f, imadas: toggleInSet(f.imadas, v) })),
     toggleSeverity: (v) => setFilters((f) => ({ ...f, severities: toggleInSet(f.severities, v) })),
@@ -229,8 +221,8 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
     clearFilters: () => setFilters(EMPTY_FILTERS),
     hasActiveFilters:
       filters.search !== '' ||
-      filters.governorates.size > 0 ||
-      filters.regions.size > 0 ||
+      filters.policeRegions.size > 0 ||
+      filters.policeDistricts.size > 0 ||
       filters.delegations.size > 0 ||
       filters.imadas.size > 0 ||
       filters.severities.size > 0 ||

@@ -1,10 +1,18 @@
 import type { ParsedDetails, RawEvent } from '../api/types';
 import { matchGovernorate, type Governorate } from '../data/governorates';
+import { matchDistrict, regionForDistrict } from '../data/regionDistricts';
 
 export interface ParsedEvent extends RawEvent {
   parsed: ParsedDetails;
   governorate: Governorate | null;
   eventDate: Date | null;
+  /** المنطقة الأمنية (police operational district) — matched from source/target
+   * against the fixed إقليم/منطقة hierarchy, distinct from parsed.locationArea
+   * (the free-text neighborhood the extraction pipeline pulled from the report
+   * text) and from `governorate` (the 24 official governorates). */
+  policeDistrict: string | null;
+  /** الإقليم — derived from policeDistrict via the fixed hierarchy. */
+  policeRegion: string | null;
 }
 
 function asRecord(v: unknown): Record<string, unknown> {
@@ -56,6 +64,7 @@ export function parseDetails(rawDetails: unknown): ParsedDetails {
     eventDatetime: null,
     facts: {},
     people: [],
+    partyTypes: [],
     raw: {},
   };
 
@@ -123,12 +132,16 @@ export function parseDetails(rawDetails: unknown): ParsedDetails {
     facts: {
       نوع_الحادث: str(facts['نوع_الحادث']),
       حالة_الطريق: str(facts['حالة_الطريق']),
+      نوع_الطريق: meaningful(facts['نوع_الطريق']),
       عدد_الوفيات: num(facts['عدد_الوفيات']) ?? 0,
       عدد_الإصابات: num(facts['عدد_الإصابات']) ?? 0,
       عدد_المركبات: num(facts['عدد_المركبات']) ?? 0,
       مواد_خطرة_متسربة: Boolean(facts['مواد_خطرة_متسربة']),
     },
     people: peopleFromDetailsList.length > 0 ? peopleFromDetailsList : peopleFromPartiesList,
+    partyTypes: Array.isArray(parties['أنواع_الأطراف_المتورطة'])
+      ? (parties['أنواع_الأطراف_المتورطة'] as unknown[]).map(str).filter(Boolean)
+      : [],
     raw: root,
   };
 }
@@ -145,11 +158,16 @@ export function parseEvent(raw: RawEvent): ParsedEvent {
   const dateSource = parsed.eventDatetime ?? raw.created_at;
   const eventDate = dateSource ? new Date(dateSource) : null;
 
+  const policeDistrict = matchDistrict(raw.source, raw.target, parsed.locationArea, parsed.locationAddress);
+  const policeRegion = policeDistrict ? regionForDistrict(policeDistrict) : null;
+
   return {
     ...raw,
     parsed,
     governorate,
     eventDate: eventDate && !Number.isNaN(eventDate.getTime()) ? eventDate : null,
+    policeDistrict,
+    policeRegion,
   };
 }
 

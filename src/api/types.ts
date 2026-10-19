@@ -122,6 +122,7 @@ export interface EventsParams {
 export interface IncidentFacts {
   نوع_الحادث: string;
   حالة_الطريق: string;
+  نوع_الطريق: string;
   عدد_الوفيات: number;
   عدد_الإصابات: number;
   عدد_المركبات: number;
@@ -154,5 +155,9 @@ export interface ParsedDetails {
   eventDatetime: string | null;
   facts: Partial<IncidentFacts>;
   people: ParsedPerson[];
+  /** Distinct road-user/vehicle types involved (من قائمة أنواع الأطراف الثابتة) —
+   * only populated for events processed after this field was added to the
+   * extraction pipeline; older records will have an empty array. */
+  partyTypes: string[];
   raw: Record<string, unknown>;
 }

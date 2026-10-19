@@ -51,7 +51,7 @@ function radiusFor(count: number, max: number): number {
 }
 
 export function TunisiaMap() {
-  const { filteredEvents, filters, setGovernorate } = useFilters();
+  const { filteredEvents } = useFilters();
 
   const stats = useMemo(() => aggregate(filteredEvents), [filteredEvents]);
   const maxCount = useMemo(() => Math.max(1, ...stats.map((s) => s.count)), [stats]);
@@ -64,7 +64,7 @@ export function TunisiaMap() {
     <section id="map" className="scroll-mt-20">
       <Card
         title="التوزيع الجغرافي للحوادث"
-        subtitle="اضغط دائرة الولاية للتصفية"
+        subtitle="عرض جغرافي — للتصفية حسب الموقع استخدم الإقليم/المنطقة أعلاه"
         action={
           <div className="flex items-center gap-3">
             <div className="hidden items-center gap-2.5 sm:flex">
@@ -92,59 +92,43 @@ export function TunisiaMap() {
               attribution='&copy; OpenStreetMap contributors &copy; CARTO'
               url={import.meta.env.VITE_MAP_TILE_URL || 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'}
             />
-            {stats.map((s) => {
-              const isFiltered = filters.governorates.size > 0;
-              const isActive = filters.governorates.has(s.ar);
-              return (
-                <CircleMarker
-                  key={s.ar}
-                  center={[s.lat, s.lon]}
-                  radius={radiusFor(s.count, maxCount)}
-                  pathOptions={{
-                    color: isActive ? '#22d3ee' : TONE_HEX[s.dominantTone],
-                    weight: isActive ? 3 : 1.5,
-                    fillColor: TONE_HEX[s.dominantTone],
-                    fillOpacity: isFiltered && !isActive ? 0.15 : 0.55,
-                  }}
-                  eventHandlers={{
-                    click: () => setGovernorate(isActive ? null : s.ar),
-                  }}
-                >
-                  <Popup>
-                    <div className="min-w-[190px] text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: TONE_HEX[s.dominantTone] }} />
-                        <span className="font-bold text-slate-100">{s.ar}</span>
-                      </div>
-                      <div className="mt-0.5 text-xs text-slate-400">{s.fr}</div>
-                      <div className="mt-2.5 grid grid-cols-3 items-start gap-1.5 text-center">
-                        <div className="rounded-lg bg-white/5 py-1.5">
-                          <div className="text-sm font-bold text-cyan-300">{formatNumber(s.count)}</div>
-                          <div className="text-[10px] text-slate-500">حوادث</div>
-                        </div>
-                        <div className="rounded-lg bg-white/5 py-1.5">
-                          <div className="text-sm font-bold text-rose-400">{formatNumber(s.deaths)}</div>
-                          <div className="text-[10px] text-slate-500">قتلى</div>
-                        </div>
-                        <div className="rounded-lg bg-white/5 py-1.5">
-                          <div className="text-sm font-bold text-amber-400">{formatNumber(s.injuries)}</div>
-                          <div className="text-[10px] text-slate-500">جرحى</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setGovernorate(s.ar);
-                          document.getElementById('events')?.scrollIntoView({ behavior: 'smooth' });
-                        }}
-                        className="mt-2.5 w-full rounded-lg bg-cyan-500/15 px-2 py-1.5 text-xs font-medium text-cyan-300 transition hover:bg-cyan-500/25"
-                      >
-                        عرض الحوادث ←
-                      </button>
+            {stats.map((s) => (
+              <CircleMarker
+                key={s.ar}
+                center={[s.lat, s.lon]}
+                radius={radiusFor(s.count, maxCount)}
+                pathOptions={{
+                  color: TONE_HEX[s.dominantTone],
+                  weight: 1.5,
+                  fillColor: TONE_HEX[s.dominantTone],
+                  fillOpacity: 0.55,
+                }}
+              >
+                <Popup>
+                  <div className="min-w-[190px] text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: TONE_HEX[s.dominantTone] }} />
+                      <span className="font-bold text-slate-100">{s.ar}</span>
                     </div>
-                  </Popup>
-                </CircleMarker>
-              );
-            })}
+                    <div className="mt-0.5 text-xs text-slate-400">{s.fr}</div>
+                    <div className="mt-2.5 grid grid-cols-3 items-start gap-1.5 text-center">
+                      <div className="rounded-lg bg-white/5 py-1.5">
+                        <div className="text-sm font-bold text-cyan-300">{formatNumber(s.count)}</div>
+                        <div className="text-[10px] text-slate-500">حوادث</div>
+                      </div>
+                      <div className="rounded-lg bg-white/5 py-1.5">
+                        <div className="text-sm font-bold text-rose-400">{formatNumber(s.deaths)}</div>
+                        <div className="text-[10px] text-slate-500">قتلى</div>
+                      </div>
+                      <div className="rounded-lg bg-white/5 py-1.5">
+                        <div className="text-sm font-bold text-amber-400">{formatNumber(s.injuries)}</div>
+                        <div className="text-[10px] text-slate-500">جرحى</div>
+                      </div>
+                    </div>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            ))}
           </MapContainer>
         </div>
         <p className="mt-2 text-[11px] text-slate-500">

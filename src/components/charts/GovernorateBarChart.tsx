@@ -41,7 +41,7 @@ function GovernorateTick({
 }
 
 export function GovernorateBarChart() {
-  const { filteredEvents, filters, setGovernorate } = useFilters();
+  const { filteredEvents } = useFilters();
 
   const data = useMemo(() => {
     const counts = new Map<string, number>();
@@ -56,17 +56,13 @@ export function GovernorateBarChart() {
   }, [filteredEvents]);
 
   return (
-    <Card title="عدد الحوادث حسب الولاية" subtitle="أعلى 12 ولاية · اضغط عمودًا للتصفية">
+    <Card title="عدد الحوادث حسب الولاية" subtitle="أعلى 12 ولاية">
       <ResponsiveContainer width="100%" height="100%" minHeight={300}>
         <BarChart data={data} margin={{ top: 4, right: 8, bottom: 4, left: -20 }}>
           <defs>
             <linearGradient id="govBarFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#22d3ee" />
               <stop offset="100%" stopColor="#6366f1" />
-            </linearGradient>
-            <linearGradient id="govBarFillActive" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#67e8f9" />
-              <stop offset="100%" stopColor="#22d3ee" />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
@@ -80,22 +76,9 @@ export function GovernorateBarChart() {
           />
           <YAxis tick={CHART_AXIS_TICK} allowDecimals={false} axisLine={false} tickLine={false} />
           <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={{ color: '#e7ecf5' }} />
-          <Bar
-            dataKey="count"
-            radius={[8, 8, 0, 0]}
-            cursor="pointer"
-            maxBarSize={40}
-            onClick={(entry) => {
-              const name = (entry as unknown as { name: string }).name;
-              setGovernorate(filters.governorates.has(name) ? null : name);
-            }}
-          >
+          <Bar dataKey="count" radius={[8, 8, 0, 0]} maxBarSize={40}>
             {data.map((d) => (
-              <Cell
-                key={d.name}
-                fill={filters.governorates.has(d.name) ? 'url(#govBarFillActive)' : 'url(#govBarFill)'}
-                opacity={filters.governorates.size === 0 || filters.governorates.has(d.name) ? 1 : 0.3}
-              />
+              <Cell key={d.name} fill="url(#govBarFill)" />
             ))}
           </Bar>
         </BarChart>

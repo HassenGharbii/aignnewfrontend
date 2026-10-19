@@ -1,10 +1,24 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useFilters } from '../context/FiltersContext';
-import { GOVERNORATES } from '../data/governorates';
 import { severityTone, statusTone, verificationTone } from '../lib/severity';
-import { formatNumber } from '../lib/format';
+import { formatNumber, formatDate } from '../lib/format';
 import { countGrouped } from '../lib/arabicText';
 import { MultiSelectDropdown } from './ui/MultiSelectDropdown';
+import { REGION_TO_DISTRICTS } from '../data/regionDistricts';
+import { buildReportData } from '../lib/reportData';
+import { generateReportDocx } from '../lib/generateReportDocx';
+import { generateReportExcel } from '../lib/generateReportExcel';
+
+function periodLabel(dateFrom: string, dateTo: string, events: { eventDate: Date | null }[]): string {
+  if (dateFrom || dateTo) {
+    return `من ${dateFrom ? formatDate(dateFrom) : '—'} إلى ${dateTo ? formatDate(dateTo) : '—'}`;
+  }
+  const dates = events.map((e) => e.eventDate).filter((d): d is Date => d !== null);
+  if (dates.length === 0) return 'كل الفترة';
+  const min = new Date(Math.min(...dates.map((d) => d.getTime())));
+  const max = new Date(Math.max(...dates.map((d) => d.getTime())));
+  return `من ${formatDate(min)} إلى ${formatDate(max)}`;
+}
 
 function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -18,8 +32,8 @@ function FilterGroup({ label, children }: { label: string; children: ReactNode }
 export function FilterBar() {
   const {
     filters,
-    toggleGovernorate,
-    toggleRegion,
+    togglePoliceRegion,
+    togglePoliceDistrict,
     toggleDelegation,
     toggleImada,
     toggleSeverity,
@@ -33,6 +47,30 @@ export function FilterBar() {
     filteredEvents,
     totalEventsCount,
   } = useFilters();
+
+  const [generating, setGenerating] = useState<'docx' | 'excel' | null>(null);
+
+  async function handleGenerateReport() {
+    if (generating) return;
+    setGenerating('docx');
+    try {
+      const data = buildReportData(filteredEvents, periodLabel(filters.dateFrom, filters.dateTo, filteredEvents));
+      await generateReportDocx(data);
+    } finally {
+      setGenerating(null);
+    }
+  }
+
+  async function handleExportExcel() {
+    if (generating) return;
+    setGenerating('excel');
+    try {
+      const data = buildReportData(filteredEvents, periodLabel(filters.dateFrom, filters.dateTo, filteredEvents));
+      await generateReportExcel(filteredEvents, data);
+    } finally {
+      setGenerating(null);
+    }
+  }
 
   const severities = useMemo(
     () => countGrouped(allEvents.map((e) => e.severity).filter(Boolean)).map(([name]) => name),
@@ -56,15 +94,23 @@ export function FilterBar() {
       ).map(([name]) => name),
     [allEvents],
   );
-  const activeGovernorates = useMemo(
-    () => new Set([...allEvents].map((e) => e.governorate?.ar).filter((v): v is string => Boolean(v))),
+  const policeRegionOptions = useMemo(
+    () =>
+      countGrouped(allEvents.map((e) => e.policeRegion).filter((v): v is string => Boolean(v))).map(
+        ([name]) => name,
+      ),
     [allEvents],
   );
-  const governorateOptions = GOVERNORATES.filter((g) => activeGovernorates.has(g.ar)).map((g) => g.ar);
-  const regions = useMemo(
-    () => countGrouped(allEvents.map((e) => e.region).filter(Boolean)).map(([name]) => name),
-    [allEvents],
-  );
+  const policeDistrictOptions = useMemo(() => {
+    const present = countGrouped(
+      allEvents.map((e) => e.policeDistrict).filter((v): v is string => Boolean(v)),
+    ).map(([name]) => name);
+    if (filters.policeRegions.size === 0) return present;
+    const allowed = new Set(
+      [...filters.policeRegions].flatMap((region) => REGION_TO_DISTRICTS[region] ?? []),
+    );
+    return present.filter((d) => allowed.has(d));
+  }, [allEvents, filters.policeRegions]);
   const delegations = useMemo(
     () =>
       countGrouped(allEvents.map((e) => e.parsed.locationDelegation).filter(Boolean)).map(([name]) => name),
@@ -79,12 +125,14 @@ export function FilterBar() {
     <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="grid flex-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <FilterGroup label="الولاية">
-            <MultiSelectDropdown options={governorateOptions} active={filters.governorates} onToggle={toggleGovernorate} />
-          </FilterGroup>
-          {regions.length > 0 && (
+          {policeRegionOptions.length > 0 && (
+            <FilterGroup label="الإقليم">
+              <MultiSelectDropdown options={policeRegionOptions} active={filters.policeRegions} onToggle={togglePoliceRegion} />
+            </FilterGroup>
+          )}
+          {policeDistrictOptions.length > 0 && (
             <FilterGroup label="المنطقة">
-              <MultiSelectDropdown options={regions} active={filters.regions} onToggle={toggleRegion} />
+              <MultiSelectDropdown options={policeDistrictOptions} active={filters.policeDistricts} onToggle={togglePoliceDistrict} />
             </FilterGroup>
           )}
           <FilterGroup label="درجة الخطورة">
@@ -141,14 +189,30 @@ export function FilterBar() {
             <span className="font-bold text-cyan-300">{formatNumber(filteredEvents.length)}</span> /{' '}
             {formatNumber(totalEventsCount)}
           </div>
-          {hasActiveFilters && (
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
-              onClick={clearFilters}
-              className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 transition hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300"
+              onClick={handleGenerateReport}
+              disabled={generating !== null || filteredEvents.length === 0}
+              className="flex items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-300 transition hover:border-cyan-500/50 hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              ✕ مسح التصفية
+              📄 {generating === 'docx' ? 'جارٍ التوليد…' : 'توليد التقرير (Word)'}
             </button>
-          )}
+            <button
+              onClick={handleExportExcel}
+              disabled={generating !== null || filteredEvents.length === 0}
+              className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-500/50 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              📊 {generating === 'excel' ? 'جارٍ التصدير…' : 'تصدير Excel'}
+            </button>
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 transition hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300"
+              >
+                ✕ مسح التصفية
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
