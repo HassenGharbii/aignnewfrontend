@@ -51,11 +51,13 @@ services:
     command:
       - "--model"
       - "${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}"
-      # A fraction of TOTAL VRAM, not an absolute: 0.46 of 32760MiB is ~15GB,
-      # which holds the AWQ weights (~8.5GB) plus KV cache. Recalculate this if
-      # you change either the card or the model.
+      # A fraction of TOTAL VRAM, not an absolute: 0.85 of 32760MiB is ~27.8GB.
+      # Measured, not estimated -- the AWQ weights plus activations and CUDA
+      # graphs take ~19.6GB, so the earlier 0.46 (~15GB) left KV cache at
+      # -4.53GB and the engine refused to start. Recalculate this if you change
+      # either the card or the model.
       - "--gpu-memory-utilization"
-      - "${VLLM_GPU_FRACTION:-0.46}"
+      - "${VLLM_GPU_FRACTION:-0.85}"
       # Event texts are short; capping context leaves more of the budget as KV
       # cache instead of reserving it for a window nothing here uses.
       - "--max-model-len"

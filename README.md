@@ -40,8 +40,11 @@ docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 ```
 
 **VRAM budgeting.** `--gpu-memory-utilization` is a fraction of *total* VRAM, not
-an absolute. The default `0.46` targets ~15GB on a 32GB card, which holds the
-int4 weights (~8.5GB) plus KV cache. Recalculate it for a different card or
+an absolute. The default `0.85` targets ~27.8GB on a 32GB card: the int4 weights,
+activations and CUDA graphs together reserve ~19.6GB, leaving ~8GB of KV cache.
+Budget for that whole ~19.6GB, not for weight size alone -- too small a fraction
+fails at startup with `No available memory for the cache blocks` and a *negative*
+`Available KV cache memory` in the log. Recalculate it for a different card or
 model — `VLLM_MODEL`, `VLLM_GPU_FRACTION` and `VLLM_MAX_MODEL_LEN` are all env
 vars, and `.env.example` lists the models that fit a 15GB budget.
 
@@ -102,8 +105,10 @@ docker compose logs -f worker
 
 Things most likely to need adjusting:
 
-- **`VLLM_GPU_FRACTION`** is arithmetic, not measured. If vLLM OOMs on startup,
-  lower it; if `nvidia-smi` shows lots of VRAM idle, raise it for more KV cache.
+- **`VLLM_GPU_FRACTION`**: if vLLM OOMs on startup, lower it; if it reports a
+  negative `Available KV cache memory`, raise it; if `nvidia-smi` shows lots of
+  VRAM idle, raise it for more KV cache. The `model weights take` and `Available
+  KV cache memory` lines in the startup log are the numbers to size against.
 - **`VLLM_TIMEOUT=300`** is a guess at 14B latency. Watch the `elapsed=` field in
   the `[vllm]` log lines and adjust.
 - **`finish_reason=length`** in those logs means `VLLM_MAX_TOKENS` is cutting
