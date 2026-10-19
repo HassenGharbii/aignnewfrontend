@@ -94,7 +94,16 @@ def vllm_chat_json(model: str, prompt: str, schema: dict) -> dict:
             f"prompt_chars={len(prompt)}"
         )
         raise
-    resp.raise_for_status()
+    if not resp.ok:
+        # vLLM explains a 4xx in the response body (context-length overruns,
+        # schema rejections). raise_for_status() discards it, which left 41
+        # rows stored as a bare "400 Client Error" with no cause -- so read it
+        # first and fold it into the exception the worker records.
+        detail = " ".join(resp.text[:500].split())
+        raise requests.HTTPError(
+            f"{resp.status_code} {resp.reason} for url: {url} -- {detail}",
+            response=resp,
+        )
     body = resp.json()
     log_call_stats(model, time.monotonic() - started, body)
     content = body["choices"][0]["message"]["content"]

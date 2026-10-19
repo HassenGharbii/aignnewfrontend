@@ -19,14 +19,19 @@ REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "30"))
 EVENTS_PAGE_SIZE = int(os.getenv("EVENTS_PAGE_SIZE", "50"))
 
 VLLM_HOST = os.getenv("VLLM_HOST", "http://vllm:8000").rstrip("/")
-# 14B is an order of magnitude slower per call than the 1B this replaced, and a
+# An 8B is far slower per call than the 1B this replaced, and a
 # cold grammar compile on the first guided request adds to it — hence minutes,
 # not the 120s Ollama needed.
 VLLM_TIMEOUT = float(os.getenv("VLLM_TIMEOUT", "300"))
 # Hard cap on generated tokens per call. A normal extraction is ~250-500 tokens;
 # without a cap a model stuck repeating itself runs until VLLM_TIMEOUT and
 # returns nothing. With it, the call ends early with finish_reason=length.
-VLLM_MAX_TOKENS = int(os.getenv("VLLM_MAX_TOKENS", "1536"))
+#
+# Not a safety valve only: under schema-guided decoding, hitting the cap cuts
+# the JSON off mid-structure and the row fails to parse rather than arriving
+# incomplete. 1536 did that to 193 rows whose summaries ran ~2x corpus length,
+# all of them failing around character 3200 of the response.
+VLLM_MAX_TOKENS = int(os.getenv("VLLM_MAX_TOKENS", "2560"))
 # Qwen3 is a hybrid reasoning model: left on, it emits <think> blocks that
 # collide with schema-guided decoding and corrupt the JSON. Every call below
 # forces it off; this exists only so it can be turned back on for debugging.
@@ -35,8 +40,8 @@ VLLM_ENABLE_THINKING = os.getenv("VLLM_ENABLE_THINKING", "false").strip().lower(
 MAX_CLASSIFY_ATTEMPTS = int(os.getenv("MAX_CLASSIFY_ATTEMPTS", "3"))
 # vLLM serves one model per process, so both of these must name the same model
 # unless you also run a second vLLM container for the other one.
-CLASSIFICATION_MODEL = os.getenv("CLASSIFICATION_MODEL", "Qwen/Qwen3-14B-AWQ")
-EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "Qwen/Qwen3-14B-AWQ")
+CLASSIFICATION_MODEL = os.getenv("CLASSIFICATION_MODEL", "Qwen/Qwen3-8B-AWQ")
+EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "Qwen/Qwen3-8B-AWQ")
 
 USE_SAMPLE_DATA = os.getenv("USE_SAMPLE_DATA", "false").strip().lower() in ("1", "true", "yes")
 SAMPLE_DATA_FILE = BASE_DIR / os.getenv("SAMPLE_DATA_FILE", "data.json.txt")

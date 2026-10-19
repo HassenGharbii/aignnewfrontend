@@ -17,7 +17,7 @@ docker compose up --build
 | `api`    | FastAPI                                 | http://localhost:9911   |
 | `worker` | Classify + extract loop                 | —                       |
 | `proxy`  | Forwarder to the source events API      | localhost:8004          |
-| `vllm`   | Inference server (Qwen3-14B-AWQ)        | http://localhost:8000   |
+| `vllm`   | Inference server (Qwen3-8B-AWQ)        | http://localhost:8000   |
 | `warmup` | One-shot model warm-up, then exits      | —                       |
 | `db`     | Postgres 16                             | localhost:5432          |
 
@@ -32,7 +32,7 @@ web image (`docker compose build web`) after changing it.
 
 ### Inference (vLLM)
 
-`vllm` serves **`Qwen/Qwen3-14B-AWQ`** through an OpenAI-compatible API and needs
+`vllm` serves **`Qwen/Qwen3-8B-AWQ`** through an OpenAI-compatible API and needs
 an NVIDIA GPU with working container passthrough. Check yours with:
 
 ```bash
@@ -40,12 +40,16 @@ docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 ```
 
 **VRAM budgeting.** `--gpu-memory-utilization` is a fraction of *total* VRAM, not
-an absolute. The default `0.85` targets ~27.8GB on a 32GB card: the int4 weights,
-activations and CUDA graphs together reserve ~19.6GB, leaving ~8GB of KV cache.
-Budget for that whole ~19.6GB, not for weight size alone -- too small a fraction
-fails at startup with `No available memory for the cache blocks` and a *negative*
-`Available KV cache memory` in the log. Recalculate it for a different card or
-model — `VLLM_MODEL`, `VLLM_GPU_FRACTION` and `VLLM_MAX_MODEL_LEN` are all env
+an absolute. The deployment card has **15.47GiB** usable — earlier revisions of
+this file wrongly claimed 32GB — and the int4 weights alone load 9.44GiB, so at
+the default `0.85` (~13.1GiB) only ~1.5GiB is left for KV cache. Budget for the
+weights plus activations and CUDA graphs, not for weight size alone: too small a
+fraction fails at startup with `No available memory for the cache blocks` and a
+*negative* `Available KV cache memory`, and too large a `--max-model-len` fails
+with `larger than the available KV cache memory` plus vLLM's estimate of the
+longest window the card can serve (9792 here). Take the real numbers off the
+`Model loading took` and `Available KV cache memory` lines in vLLM's startup log
+rather than computing them. Recalculate for a different card or model — `VLLM_MODEL`, `VLLM_GPU_FRACTION` and `VLLM_MAX_MODEL_LEN` are all env
 vars, and `.env.example` lists the models that fit a 15GB budget.
 
 vLLM serves **one model per process**, so `VLLM_MODEL` is injected as both
@@ -57,7 +61,7 @@ blocks are not valid under the JSON schemas used for guided decoding. Every call
 sends `chat_template_kwargs: {enable_thinking: false}`. `VLLM_ENABLE_THINKING`
 exists for debugging only — turning it on will corrupt the extraction output.
 
-**First start is slow**: the weights (~9GB) download from HuggingFace, then load.
+**First start is slow**: the weights (~5.5GB) download from HuggingFace, then load.
 They're cached in the `hf_cache` volume, so later starts only pay the load. The
 healthcheck allows 30 minutes for this before it starts counting failures.
 
@@ -65,7 +69,7 @@ healthcheck allows 30 minutes for this before it starts counting failures.
 
 `/health` goes green once weights are loaded, but the first *schema-guided*
 request still pays a one-off cost the healthcheck never triggers: xgrammar
-compiling the JSON schema into a grammar. On a 14B that can take tens of
+compiling the JSON schema into a grammar. On an 8B that can take tens of
 seconds, which would otherwise land on the worker's first real event and look
 like a hang.
 
@@ -89,7 +93,7 @@ weights on a GPU**. On the deployment machine, check these in order:
 docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 
 # 2. Start just the model server and watch it load (several minutes; the first
-#    run also downloads ~9GB)
+#    run also downloads ~5.5GB)
 docker compose up vllm
 
 # 3. It reports the model it is serving
@@ -109,7 +113,7 @@ Things most likely to need adjusting:
   negative `Available KV cache memory`, raise it; if `nvidia-smi` shows lots of
   VRAM idle, raise it for more KV cache. The `model weights take` and `Available
   KV cache memory` lines in the startup log are the numbers to size against.
-- **`VLLM_TIMEOUT=300`** is a guess at 14B latency. Watch the `elapsed=` field in
+- **`VLLM_TIMEOUT=300`** is a guess at 8B latency. Watch the `elapsed=` field in
   the `[vllm]` log lines and adjust.
 - **`finish_reason=length`** in those logs means `VLLM_MAX_TOKENS` is cutting
   generation off mid-JSON — raise it.
