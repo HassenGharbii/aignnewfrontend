@@ -63,13 +63,24 @@ services:
       # Most event texts are short (corpus mean ~1.1k chars), but the tail is
       # not: the longest runs 26k chars (~10.4k tokens), which overran the old
       # 8192 window and came back as a 400 for 41 records. 16384 covers that
-      # maximum plus the 2560-token reply. It only fits because the 8B's
+      # maximum plus the reply. It only fits because the 8B's
       # weights leave ~6GiB of KV cache; the 14B left 1.5GiB and could not.
       - "--max-model-len"
       - "${VLLM_MAX_MODEL_LEN:-16384}"
       # classify and extract for one event share a prompt prefix on purpose
       # (see pipeline.classify_subcategory), so caching it skips a second prefill.
       - "--enable-prefix-caching"
+      # A JSON grammar allows unlimited whitespace between any two tokens, which
+      # is an infinitely long legal path through it. At temperature 0 the 8B fell
+      # into a loop of newline tokens after the last field it managed to write,
+      # ran to max_tokens, and returned JSON missing its final required key and
+      # its closing braces -- 12 of 25 calls, ~89s wasted each. Raising
+      # max_tokens only bought more newlines. Compact output deletes the path.
+      # This is server-level only: a per-request disable_any_whitespace is
+      # silently ignored. The backend must be pinned too, because `auto`
+      # combined with this flag fails at startup on some versions.
+      - "--structured-outputs-config"
+      - '{"backend":"xgrammar","disable_any_whitespace":true}'
     environment:
       # Only needed for gated repos; harmless when unset.
       HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
