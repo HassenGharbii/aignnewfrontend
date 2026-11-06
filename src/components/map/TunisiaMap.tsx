@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
-import type { Layer, Path } from 'leaflet';
-import { CircleMarker, GeoJSON, MapContainer, Pane, Popup } from 'react-leaflet';
+import { divIcon, type Layer, type Path } from 'leaflet';
+import { CircleMarker, GeoJSON, MapContainer, Marker, Pane, Popup } from 'react-leaflet';
 import { Card } from '../ui/Card';
 import { useFilters } from '../../context/FiltersContext';
 import { GOVERNORATES } from '../../data/governorates';
@@ -51,7 +51,26 @@ type GovernorateBorders = FeatureCollection<Geometry, { ar: string }>;
 /** The 24 governorate borders, served from public/ so the map needs no tile server or internet access.
  * Built from geoBoundaries TUN ADM1 (simplified), which is OpenStreetMap data under the ODbL. */
 const BORDERS_URL = `${import.meta.env.BASE_URL}geo/tunisia-governorates.geojson`;
+/** Algeria, Libya, Italy and Malta, clipped to the area around Tunisia and simplified — backdrop only.
+ * Built from geoBoundaries ADM0 (OSM/ODbL for Algeria, CC BY 3.0 for Italy, public domain for Libya and Malta). */
+const NEIGHBOURS_URL = `${import.meta.env.BASE_URL}geo/neighbours.geojson`;
 const BORDERS_ATTRIBUTION = '&copy; OpenStreetMap contributors · geoBoundaries';
+const NEIGHBOUR_STYLE = { color: '#24304a', weight: 1, fillColor: '#151f33', fillOpacity: 1, interactive: false };
+
+/** Faint name labels inside each neighbour's visible part. Sicily and Malta only show as slivers at the
+ * default zoom, too small for a readable label, so they stay unlabelled. */
+const NEIGHBOUR_LABELS: { name: string; position: [number, number] }[] = [
+  { name: 'الجزائر', position: [33.2, 5.2] },
+  { name: 'ليبيا', position: [30.9, 14.6] },
+];
+const neighbourLabelIcon = (name: string) =>
+  divIcon({ className: 'map-country-label', html: name, iconSize: [80, 16], iconAnchor: [40, 8] });
+
+async function fetchGeoJson<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${url}`);
+  return res.json() as Promise<T>;
+}
 const BORDER_COLOR = '#24304a'; // --color-border
 const BORDER_HOVER_COLOR = '#cbd5e1';
 
@@ -105,11 +124,12 @@ export function TunisiaMap() {
 
   const { data: borders } = useQuery({
     queryKey: ['tunisia-governorate-borders'],
-    queryFn: async (): Promise<GovernorateBorders> => {
-      const res = await fetch(BORDERS_URL);
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${BORDERS_URL}`);
-      return res.json() as Promise<GovernorateBorders>;
-    },
+    queryFn: () => fetchGeoJson<GovernorateBorders>(BORDERS_URL),
+    staleTime: Infinity,
+  });
+  const { data: neighbours } = useQuery({
+    queryKey: ['tunisia-neighbour-borders'],
+    queryFn: () => fetchGeoJson<FeatureCollection>(NEIGHBOURS_URL),
     staleTime: Infinity,
   });
 
@@ -171,6 +191,13 @@ export function TunisiaMap() {
             scrollWheelZoom
             style={{ height: '100%', width: '100%' }}
           >
+            {/* Backdrop under everything else: neighbouring countries, muted and non-interactive. */}
+            <Pane name="neighbour-borders" style={{ zIndex: 300 }}>
+              {neighbours && <GeoJSON data={neighbours} style={NEIGHBOUR_STYLE} attribution={BORDERS_ATTRIBUTION} />}
+              {NEIGHBOUR_LABELS.map((l) => (
+                <Marker key={l.name} position={l.position} icon={neighbourLabelIcon(l.name)} interactive={false} />
+              ))}
+            </Pane>
             {/* Below the default overlay pane (z-index 400), so the severity circles stay clickable on top. */}
             <Pane name="governorate-borders" style={{ zIndex: 350 }}>
               {bordersLayer}

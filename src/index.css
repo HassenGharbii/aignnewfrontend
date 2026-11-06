@@ -66,6 +66,16 @@ body {
   border-top-color: var(--color-panel-2);
 }
 
+.map-country-label {
+  color: #4b5a75;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .leaflet-control-attribution {
   background: rgba(10, 15, 26, 0.7) !important;
   color: #8291ab !important;
