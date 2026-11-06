@@ -1,6 +1,11 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import models
+
+# Must match the expression index created in db.init_db (same function, same argument
+# order) or Postgres cannot use the index.
+CATEGORY_EXPR = func.json_extract_path_text(models.ProcessedEvent.data, "التصنيف", "الصنف_الرئيسي")
 
 
 def upsert_raw_event(db: Session, event: dict) -> models.RawEvent:
@@ -50,14 +55,17 @@ def save_processed_event(
     return processed
 
 
-def list_done_with_raw(db: Session) -> list[tuple[models.ProcessedEvent, models.RawEvent]]:
-    return (
+def list_done_with_raw(
+    db: Session, category: str | None = None
+) -> list[tuple[models.ProcessedEvent, models.RawEvent]]:
+    query = (
         db.query(models.ProcessedEvent, models.RawEvent)
         .join(models.RawEvent, models.RawEvent.reference == models.ProcessedEvent.reference)
         .filter(models.ProcessedEvent.status == "done")
-        .order_by(models.ProcessedEvent.created_at.desc())
-        .all()
     )
+    if category:
+        query = query.filter(CATEGORY_EXPR == category)
+    return query.order_by(models.ProcessedEvent.created_at.desc()).all()
 
 
 def get_or_create_poll_state(db: Session, default_start: str) -> models.PollState:

@@ -121,8 +121,11 @@ def reset_poll_state(start: str, db: Session = Depends(get_db)):
 # this feed produces (a police reporting stream, not a firehose) — revisit
 # with real columns/indexes if that stops being true.
 # ---------------------------------------------------------------------------
-def _dashboard_rows(db: Session) -> list[dict]:
-    return [serialize.to_dashboard_event(processed, raw) for processed, raw in crud.list_done_with_raw(db)]
+def _dashboard_rows(db: Session, category: str | None = None) -> list[dict]:
+    return [
+        serialize.to_dashboard_event(processed, raw)
+        for processed, raw in crud.list_done_with_raw(db, category)
+    ]
 
 
 @app.get("/api/categories")
@@ -182,10 +185,8 @@ def list_dashboard_events(
     search: str | None = None,
     db: Session = Depends(get_db),
 ):
-    rows = _dashboard_rows(db)
+    rows = _dashboard_rows(db, category)
 
-    if category:
-        rows = [r for r in rows if r["category"] == category]
     if sub_category:
         rows = [r for r in rows if r["sub_category"] == sub_category]
     if region:

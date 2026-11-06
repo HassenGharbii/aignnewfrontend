@@ -16,6 +16,12 @@ def init_db():
         conn.execute(
             text("ALTER TABLE processed_events ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0")
         )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_processed_events_category ON processed_events "
+                "(json_extract_path_text(data, 'التصنيف', 'الصنف_الرئيسي'))"
+            )
+        )
 
 
 def get_db():
