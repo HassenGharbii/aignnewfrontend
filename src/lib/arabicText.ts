@@ -46,18 +46,53 @@ export function fuzzyIncludes(haystack: string, needle: string): boolean {
   return h.split(' ').some((word) => isSameCategory(word, n));
 }
 
+/** Same result as `levenshtein(a, b) <= 1`, in one pass and without allocating a matrix. */
+function withinOneEdit(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  if (a.length < b.length) return withinOneEdit(b, a);
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      i++;
+      j++;
+      continue;
+    }
+    if (++edits > 1) return false;
+    if (a.length === b.length) j++; // substitution
+    i++; // deletion from the longer string
+  }
+  return edits + (a.length - i) <= 1;
+}
+
 /**
  * Counts free-text values, merging near-duplicate spellings into one bucket
- * (see isSameCategory). The most frequent exact spelling in a bucket is used
- * as its display label.
+ * (same rule as isSameCategory). The most frequent exact spelling in a bucket
+ * is used as its display label.
+ *
+ * Identical spellings are counted first and each distinct spelling is
+ * normalized once: comparing every occurrence against every spelling with
+ * isSameCategory took ~19 s on the ~14k keywords of the traffic dataset and
+ * froze the dashboard on load and whenever the filters were cleared.
  */
 export function countGrouped(values: string[]): [string, number][] {
-  const buckets: { spellings: Map<string, number> }[] = [];
+  const exact = new Map<string, number>();
+  for (const v of values) exact.set(v, (exact.get(v) ?? 0) + 1);
 
-  for (const raw of values) {
-    const bucket = buckets.find((b) => [...b.spellings.keys()].some((k) => isSameCategory(k, raw)));
-    if (bucket) bucket.spellings.set(raw, (bucket.spellings.get(raw) ?? 0) + 1);
-    else buckets.push({ spellings: new Map([[raw, 1]]) });
+  const buckets: { spellings: Map<string, number>; normalized: string[] }[] = [];
+  for (const [raw, count] of exact) {
+    const n = normalizeArabic(raw);
+    const bucket = buckets.find((b) =>
+      b.normalized.some((m) => m === n || (Math.min(m.length, n.length) >= 3 && withinOneEdit(m, n))),
+    );
+    if (bucket) {
+      bucket.spellings.set(raw, count);
+      bucket.normalized.push(n);
+    } else {
+      buckets.push({ spellings: new Map([[raw, count]]), normalized: [n] });
+    }
   }
 
   return buckets
