@@ -65,7 +65,9 @@ def list_done_with_raw(
     )
     if category:
         query = query.filter(CATEGORY_EXPR == category)
-    return query.order_by(models.ProcessedEvent.created_at.desc()).all()
+    # id tie-breaker: clients page across separate requests, and equal created_at
+    # values must not reorder between pages.
+    return query.order_by(models.ProcessedEvent.created_at.desc(), models.ProcessedEvent.id.desc()).all()
 
 
 def get_or_create_poll_state(db: Session, default_start: str) -> models.PollState:

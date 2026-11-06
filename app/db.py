@@ -16,6 +16,10 @@ def init_db():
         conn.execute(
             text("ALTER TABLE processed_events ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0")
         )
+        # Built in the same transaction as the ALTER TABLE above: its ACCESS EXCLUSIVE
+        # lock serializes concurrent init_db calls (api and worker). Don't split this
+        # out or use CONCURRENTLY without handling that race. The first start after
+        # deploy blocks while the index builds.
         conn.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_processed_events_category ON processed_events "

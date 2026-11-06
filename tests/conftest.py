@@ -1,10 +1,25 @@
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import text
+import os
 
-from app import models
-from app.api import app
-from app.db import SessionLocal, engine, init_db
+import pytest
+
+# The tests TRUNCATE tables, so never fall back to DATABASE_URL / .env (the real DB).
+# This must run before anything imports `app`. python-dotenv does not override
+# variables that are already set, so the .env file cannot undo this.
+_test_url = os.environ.get("TEST_DATABASE_URL")
+if not _test_url:
+    pytest.exit(
+        "TEST_DATABASE_URL is not set. Refusing to run: these tests TRUNCATE tables. "
+        "Point it at a throwaway database.",
+        returncode=2,
+    )
+os.environ["DATABASE_URL"] = _test_url
+
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+
+from app import models  # noqa: E402
+from app.api import app  # noqa: E402
+from app.db import SessionLocal, engine, init_db  # noqa: E402
 
 DEFAULT_CATEGORY = "أحداث مرورية"
 DEFAULT_SUB_CATEGORY = "حادث مرور"

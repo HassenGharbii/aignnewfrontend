@@ -115,11 +115,12 @@ def reset_poll_state(start: str, db: Session = Depends(get_db)):
 # computed from the same processed_events rows as the ops API above; nothing
 # is stored twice.
 #
-# Filtering/pagination happens in Python after loading all "done" rows rather
-# than in SQL, since the interesting fields (region, severity, sub_category)
-# live inside JSONB and are derived, not stored columns. Fine at the volume
-# this feed produces (a police reporting stream, not a firehose) — revisit
-# with real columns/indexes if that stops being true.
+# Category is filtered in SQL (expression index ix_processed_events_category).
+# sub_category, region and search are filtered in Python after loading the
+# matching "done" rows, as are pagination and the stats endpoints, since those
+# fields live inside JSON and are derived, not stored columns. Fine at the
+# volume this feed produces — revisit with real columns/indexes if that stops
+# being true.
 # ---------------------------------------------------------------------------
 def _dashboard_rows(db: Session, category: str | None = None) -> list[dict]:
     return [
