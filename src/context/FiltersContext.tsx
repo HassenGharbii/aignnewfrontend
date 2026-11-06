@@ -137,14 +137,6 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Unaffected by filters — pulled once from the stats endpoint so headline
-  // counts don't shrink to whatever the current filtered fetch happens to hold.
-  const { data: summary } = useQuery({
-    queryKey: ['summary'],
-    queryFn: api.summary,
-    staleTime: 5 * 60 * 1000,
-  });
-
   const allEvents = useMemo(() => (data ? parseEvents(data) : []), [data]);
   const haystacks = useMemo(() => new Map(allEvents.map((e) => [e.id, searchHaystack(e)])), [allEvents]);
 
@@ -224,9 +216,7 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
       filters.dateTo !== '',
     allEvents,
     filteredEvents,
-    totalEventsCount:
-      summary?.events_by_category.find((c) => isSameCategory(c.category, TRAFFIC_CATEGORY))?.count ??
-      allEvents.length,
+    totalEventsCount: allEvents.length,
     isLoading,
     isError,
     refetch,
