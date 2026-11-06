@@ -1,12 +1,12 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useDeferredValue, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { RawEvent } from '../api/types';
 import { parseEvents, type ParsedEvent } from '../lib/parseEvent';
 import { isSameCategory } from '../lib/arabicText';
-import { useDebouncedValue } from '../lib/useDebouncedValue';
 
-const EVENTS_PAGE_LIMIT = 500;
+/** The API caps `limit` at 2000; bigger pages mean fewer sequential round-trips. */
+const EVENTS_PAGE_LIMIT = 2000;
 
 /** This dashboard is dedicated to traffic incidents — every fetch is scoped to this main category. */
 const TRAFFIC_CATEGORY = 'أحداث مرورية';
@@ -25,7 +25,7 @@ async function fetchAllPages(params: {
   search?: string;
   sub_category?: string;
 }): Promise<RawEvent[]> {
-  const results: RawEvent[] = [];
+  const byId = new Map<number, RawEvent>();
   let offset = 0;
   let totalItems = Infinity;
 
@@ -33,30 +33,32 @@ async function fetchAllPages(params: {
     const page = await api.events({ ...params, limit: EVENTS_PAGE_LIMIT, offset });
     totalItems = page.total_items;
     if (page.data.length === 0) break;
-    results.push(...page.data);
+    for (const event of page.data) byId.set(event.id, event);
     offset += page.data.length;
   }
 
-  return results;
+  return [...byId.values()];
 }
 
-/**
- * The API takes one value per filter param, but sub-category picking allows
- * multiple selections — so each selected value becomes its own request, run
- * in parallel and merged/deduped by id. إقليم/المنطقة/المعتمدية/العمادة are all
- * filtered client-side only (see filteredEvents below), not fetched per-value.
- */
-async function fetchFilteredEvents(search: string, subCategories: string[]): Promise<RawEvent[]> {
-  const subCategoryOptions = subCategories.length > 0 ? subCategories : [undefined];
-
-  const requests = subCategoryOptions.map((sub_category) =>
-    fetchAllPages({ category: TRAFFIC_CATEGORY, search: search || undefined, sub_category }),
-  );
-
-  const pages = await Promise.all(requests);
-  const byId = new Map<number, RawEvent>();
-  for (const page of pages) for (const event of page) byId.set(event.id, event);
-  return [...byId.values()];
+/** Builds the lowercase text the free-text search matches against, once per event. */
+function searchHaystack(e: ParsedEvent): string {
+  return [
+    e.event_title,
+    e.sub_category,
+    e.region,
+    e.policeRegion,
+    e.policeDistrict,
+    e.parsed.description,
+    e.event_summary,
+    e.parsed.reportedBy,
+    e.parsed.verifiedBy,
+    e.parsed.source,
+    e.parsed.locationDelegation,
+    e.parsed.locationImada,
+    ...e.parsed.keywords,
+  ]
+    .join(' ')
+    .toLowerCase();
 }
 
 export interface FiltersState {
@@ -122,12 +124,17 @@ function toggleInSet(set: Set<string>, value: string): Set<string> {
 export function FiltersProvider({ children }: { children: ReactNode }) {
   const [filters, setFilters] = useState<FiltersState>(EMPTY_FILTERS);
 
-  const debouncedSearch = useDebouncedValue(filters.search.trim(), 300);
-  const subCategoryKey = useMemo(() => [...filters.subCategories].sort(), [filters.subCategories]);
+  // Filtering is cheap, but re-rendering every chart on each keystroke or click
+  // isn't. Deferring lets the inputs update first and the charts catch up.
+  const deferredFilters = useDeferredValue(filters);
 
+  // The whole traffic dataset is fetched once. Every filter, search and
+  // sub-category included, runs client-side in filteredEvents below, so
+  // changing a filter never triggers a new download.
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['events', debouncedSearch, subCategoryKey],
-    queryFn: () => fetchFilteredEvents(debouncedSearch, subCategoryKey),
+    queryKey: ['events', TRAFFIC_CATEGORY],
+    queryFn: () => fetchAllPages({ category: TRAFFIC_CATEGORY }),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Unaffected by filters — pulled once from the stats endpoint so headline
@@ -139,8 +146,10 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
   });
 
   const allEvents = useMemo(() => (data ? parseEvents(data) : []), [data]);
+  const haystacks = useMemo(() => new Map(allEvents.map((e) => [e.id, searchHaystack(e)])), [allEvents]);
 
   const filteredEvents = useMemo(() => {
+    const filters = deferredFilters;
     const search = filters.search.trim().toLowerCase();
     const from = filters.dateFrom ? new Date(filters.dateFrom) : null;
     const to = filters.dateTo ? new Date(filters.dateTo) : null;
@@ -183,28 +192,10 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
       }
       if (from && e.eventDate && e.eventDate < from) return false;
       if (to && e.eventDate && e.eventDate > to) return false;
-      if (search) {
-        const haystack = [
-          e.event_title,
-          e.region,
-          e.policeRegion,
-          e.policeDistrict,
-          e.parsed.description,
-          e.event_summary,
-          e.parsed.reportedBy,
-          e.parsed.verifiedBy,
-          e.parsed.source,
-          e.parsed.locationDelegation,
-          e.parsed.locationImada,
-          ...e.parsed.keywords,
-        ]
-          .join(' ')
-          .toLowerCase();
-        if (!haystack.includes(search)) return false;
-      }
+      if (search && !haystacks.get(e.id)?.includes(search)) return false;
       return true;
     });
-  }, [allEvents, filters]);
+  }, [allEvents, haystacks, deferredFilters]);
 
   const value: FiltersContextValue = {
     filters,
