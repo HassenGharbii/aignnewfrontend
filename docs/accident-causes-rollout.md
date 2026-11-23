@@ -82,3 +82,15 @@ docker compose exec -T api python -m app.recheck_old --all-categories
 
 The worker then re-extracts them on its normal cycles. Hand-edited reports are
 never touched. Running it again is harmless.
+
+## Retrying reports that failed on a looping model answer
+
+Reports whose extraction was cut off at `max_tokens` (log: `finish_reason=length`,
+then a JSON error) stop being retried after `MAX_CLASSIFY_ATTEMPTS`. After deploying
+the bounded lists, release them:
+
+```bash
+docker compose exec -T api python -m app.recheck_old       # re-extractions of corrected reports
+docker compose exec -T db psql -U morour -d morour -c \
+  "UPDATE processed_events SET attempts = 0 WHERE status = 'failed' AND attempts >= 3;"
+```

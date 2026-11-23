@@ -32,7 +32,14 @@ from sqlalchemy.orm import Session
 
 from . import config, crud, models
 from .db import SessionLocal, init_db
-from .pipeline import classify_subcategory, extract_details, normalize_causes, vllm_chat_json
+from .pipeline import (
+    classify_subcategory,
+    clean_parties,
+    dedupe,
+    extract_details,
+    normalize_causes,
+    vllm_chat_json,
+)
 
 
 def log(*args):
@@ -177,14 +184,14 @@ def build_record(raw: models.RawEvent, category: str, subcategory: dict, extract
             "نسبة_الثقة": subcategory.get("نسبة_الثقة"),
         },
         "عنوان": raw.subject,
-        "كلمات_مفتاحية": extraction.get("كلمات_مفتاحية", []),
+        "كلمات_مفتاحية": dedupe(extraction.get("كلمات_مفتاحية", [])),
         "الموقع": {
             "العنوان": raw.event_place,
             "المنطقة": extraction.get("الموقع", {}).get("المنطقة"),
             "المعتمدية": extraction.get("الموقع", {}).get("المعتمدية"),
             "العمادة": extraction.get("الموقع", {}).get("العمادة"),
         },
-        "الأطراف": extraction.get("الأطراف", {}),
+        "الأطراف": clean_parties(extraction.get("الأطراف", {})),
         "تفاصيل_الحادث": extraction.get("تفاصيل_الحادث", {}),
         "أسباب_الحادث": normalize_causes(extraction.get("أسباب_الحادث")),
         "النص_الأصلي": raw.event_summary,

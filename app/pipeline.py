@@ -178,6 +178,24 @@ def load_accident_causes(path) -> list[str]:
 ACCIDENT_CAUSES = load_accident_causes(config.ACCIDENT_CAUSES_FILE)
 
 
+def dedupe(values) -> list:
+    """First occurrence of each item, order kept; non-lists become []."""
+    if not isinstance(values, list):
+        return []
+    out = []
+    for v in values:
+        if v not in out:
+            out.append(v)
+    return out
+
+
+def clean_parties(parties) -> dict:
+    parties = dict(parties) if isinstance(parties, dict) else {}
+    if "أنواع_الأطراف_المتورطة" in parties:
+        parties["أنواع_الأطراف_المتورطة"] = dedupe(parties["أنواع_الأطراف_المتورطة"])
+    return parties
+
+
 def normalize_causes(values) -> list[str]:
     """Keep list causes only, first occurrence each. The schema has no
     uniqueItems (xgrammar support is uncertain), so duplicates are removed here."""
@@ -198,7 +216,9 @@ def normalize_causes(values) -> list[str]:
 EXTRACTION_SCHEMA = {
     "type": "object",
     "properties": {
-        "كلمات_مفتاحية": {"type": "array", "items": {"type": "string"}},
+        # maxItems on every list: without it a looping model can repeat one item until
+        # max_tokens, and the cut-off JSON fails to parse (seen live on campaign reports).
+        "كلمات_مفتاحية": {"type": "array", "items": {"type": "string"}, "maxItems": 6},
         "الموقع": {
             "type": "object",
             "properties": {
@@ -224,6 +244,7 @@ EXTRACTION_SCHEMA = {
                 "أنواع_الأطراف_المتورطة": {
                     "type": "array",
                     "items": {"type": "string", "enum": PARTY_TYPES},
+                    "maxItems": len(PARTY_TYPES),
                 },
             },
             "required": ["السائقون", "أنواع_الأطراف_المتورطة"],
@@ -345,14 +366,14 @@ def build_event_record(event: dict, subcategory: dict, extraction: dict) -> dict
             "نسبة_الثقة": subcategory.get("نسبة_الثقة"),
         },
         "عنوان": event.get("subject"),  # kept as-is, not LLM-derived
-        "كلمات_مفتاحية": extraction.get("كلمات_مفتاحية", []),
+        "كلمات_مفتاحية": dedupe(extraction.get("كلمات_مفتاحية", [])),
         "الموقع": {
             "العنوان": event.get("event_place"),  # kept as-is, not LLM-derived
             "المنطقة": extraction.get("الموقع", {}).get("المنطقة"),
             "المعتمدية": extraction.get("الموقع", {}).get("المعتمدية"),
             "العمادة": extraction.get("الموقع", {}).get("العمادة"),
         },
-        "الأطراف": extraction.get("الأطراف", {}),
+        "الأطراف": clean_parties(extraction.get("الأطراف", {})),
         "تفاصيل_الحادث": extraction.get("تفاصيل_الحادث", {}),
         "أسباب_الحادث": normalize_causes(extraction.get("أسباب_الحادث")),
         "النص_الأصلي": event.get("event_summary"),
