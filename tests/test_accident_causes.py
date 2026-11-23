@@ -57,3 +57,22 @@ def test_builders_store_causes():
         reference="r", source=None, event_time=None, subject=None, event_place=None, event_summary=None
     )
     assert build_record(raw, "أحداث مرورية", {}, extraction)["أسباب_الحادث"] == ["السرعة"]
+
+
+def _row(data):
+    from app.serialize import to_dashboard_event
+
+    processed = SimpleNamespace(id=1, data=data, status="done", created_at=None, updated_at=None)
+    raw = SimpleNamespace(
+        event_summary="s", event_time=None, source=None, target=None, subject="t", event_place=None
+    )
+    return to_dashboard_event(processed, raw)
+
+
+def test_row_exposes_causes():
+    assert _row({"أسباب_الحادث": ["السرعة", 3, "المداهمة"]})["causes"] == ["السرعة", "المداهمة"]
+
+
+def test_row_without_causes_is_empty_list():
+    assert _row({})["causes"] == []
+    assert _row(None)["causes"] == []

@@ -82,6 +82,8 @@ def to_dashboard_event(processed, raw) -> dict:
         "updated_at": updated_at,
         "classification_scores": {"نسبة_الثقة": classification.get("نسبة_الثقة")},
         "sub_category_score": classification.get("نسبة_الثقة"),
+        # Normalized at write time (pipeline.normalize_causes); [] = not extracted yet.
+        "causes": [c for c in (data.get("أسباب_الحادث") or []) if isinstance(c, str)],
     }
 
 
