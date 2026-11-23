@@ -68,3 +68,17 @@ docker compose stop api worker
 docker compose exec -T db pg_restore -U morour -d morour --clean --if-exists < backup_before_causes_<date>.dump
 docker compose start api worker
 ```
+
+## Re-extracting reports corrected before version tracking
+
+Reports whose figures came from an older version of their text (a correction
+overwrote the raw text under the same reference) are listed and queued with:
+
+```bash
+docker compose exec -T api python -m app.recheck_old --dry-run   # list only
+docker compose exec -T api python -m app.recheck_old             # queue traffic reports
+docker compose exec -T api python -m app.recheck_old --all-categories
+```
+
+The worker then re-extracts them on its normal cycles. Hand-edited reports are
+never touched. Running it again is harmless.
