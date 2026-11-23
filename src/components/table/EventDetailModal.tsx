@@ -43,14 +43,9 @@ export function EventDetailModal({ event, onClose }: { event: ParsedEvent | null
               الأولوية {event.priority}
             </span>
           )}
-          {event.causes.map((cause) => (
-            <span key={cause} className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-200">
-              {cause}
-            </span>
-          ))}
           {event.sub_category && (
             <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs text-slate-300">
-              نوع الحادث: {event.sub_category}
+              {event.sub_category}
             </span>
           )}
           <span className="text-xs text-slate-500">

@@ -45,7 +45,6 @@ function searchHaystack(e: ParsedEvent): string {
   return [
     e.event_title,
     e.sub_category,
-    ...e.causes,
     e.region,
     e.policeRegion,
     e.policeDistrict,
@@ -70,7 +69,7 @@ export interface FiltersState {
   imadas: Set<string>; // العمادة
   severities: Set<string>;
   statuses: Set<string>;
-  causes: Set<string>;
+  subCategories: Set<string>;
   verifications: Set<string>;
   dateFrom: string; // yyyy-mm-dd
   dateTo: string;
@@ -84,7 +83,7 @@ const EMPTY_FILTERS: FiltersState = {
   imadas: new Set(),
   severities: new Set(),
   statuses: new Set(),
-  causes: new Set(),
+  subCategories: new Set(),
   verifications: new Set(),
   dateFrom: '',
   dateTo: '',
@@ -99,7 +98,7 @@ interface FiltersContextValue {
   toggleImada: (v: string) => void;
   toggleSeverity: (v: string) => void;
   toggleStatus: (v: string) => void;
-  toggleCause: (v: string) => void;
+  toggleSubCategory: (v: string) => void;
   toggleVerification: (v: string) => void;
   setDateRange: (from: string, to: string) => void;
   clearFilters: () => void;
@@ -172,7 +171,10 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
         return false;
       if (filters.statuses.size > 0 && ![...filters.statuses].some((v) => isSameCategory(v, e.event_status)))
         return false;
-      if (filters.causes.size > 0 && !e.causes.some((c) => filters.causes.has(c))) return false;
+      if (filters.subCategories.size > 0) {
+        if (!e.sub_category || ![...filters.subCategories].some((v) => isSameCategory(v, e.sub_category!)))
+          return false;
+      }
       if (filters.verifications.size > 0) {
         if (
           !e.parsed.verificationStatus ||
@@ -196,7 +198,7 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
     toggleImada: (v) => setFilters((f) => ({ ...f, imadas: toggleInSet(f.imadas, v) })),
     toggleSeverity: (v) => setFilters((f) => ({ ...f, severities: toggleInSet(f.severities, v) })),
     toggleStatus: (v) => setFilters((f) => ({ ...f, statuses: toggleInSet(f.statuses, v) })),
-    toggleCause: (v) => setFilters((f) => ({ ...f, causes: toggleInSet(f.causes, v) })),
+    toggleSubCategory: (v) => setFilters((f) => ({ ...f, subCategories: toggleInSet(f.subCategories, v) })),
     toggleVerification: (v) => setFilters((f) => ({ ...f, verifications: toggleInSet(f.verifications, v) })),
     setDateRange: (from, to) => setFilters((f) => ({ ...f, dateFrom: from, dateTo: to })),
     clearFilters: () => setFilters(EMPTY_FILTERS),
@@ -208,7 +210,7 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
       filters.imadas.size > 0 ||
       filters.severities.size > 0 ||
       filters.statuses.size > 0 ||
-      filters.causes.size > 0 ||
+      filters.subCategories.size > 0 ||
       filters.verifications.size > 0 ||
       filters.dateFrom !== '' ||
       filters.dateTo !== '',

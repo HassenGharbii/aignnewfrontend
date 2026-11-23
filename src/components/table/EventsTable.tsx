@@ -45,10 +45,9 @@ const columns = [
     id: 'region',
     header: 'المنطقة',
   }),
-  columnHelper.accessor((e) => e.causes.join('، '), {
-    id: 'causes',
-    header: 'الأسباب',
-    cell: (ctx) => (ctx.getValue() ? truncate(ctx.getValue(), 30) : '—'),
+  columnHelper.accessor('sub_category', {
+    header: 'السبب/النوع',
+    cell: (ctx) => (ctx.getValue() ? truncate(ctx.getValue() as string, 30) : '—'),
   }),
   columnHelper.accessor('severity', {
     header: 'الخطورة',
@@ -75,12 +74,12 @@ const columns = [
 ];
 
 function exportEvents(events: ParsedEvent[]) {
-  const header = ['التاريخ', 'العنوان', 'المنطقة', 'الأسباب', 'الخطورة', 'الحالة', 'الأولوية', 'قتلى', 'جرحى', 'مركبات'];
+  const header = ['التاريخ', 'العنوان', 'المنطقة', 'السبب/النوع', 'الخطورة', 'الحالة', 'الأولوية', 'قتلى', 'جرحى', 'مركبات'];
   const rows = events.map((e) => [
     formatDate(e.eventDate),
     e.event_title || e.event_summary,
     e.governorate?.ar ?? e.region,
-    e.causes.join('، '),
+    e.sub_category ?? '',
     e.severity,
     e.event_status,
     e.priority,

@@ -163,8 +163,6 @@ export function parseEvent(raw: RawEvent): ParsedEvent {
 
   return {
     ...raw,
-    // An API older than the causes feature omits the field; treat it as not extracted.
-    causes: Array.isArray(raw.causes) ? raw.causes : [],
     parsed,
     governorate,
     eventDate: eventDate && !Number.isNaN(eventDate.getTime()) ? eventDate : null,
