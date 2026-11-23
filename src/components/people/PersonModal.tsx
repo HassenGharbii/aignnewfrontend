@@ -17,6 +17,7 @@ export function PersonModal({ person, onClose }: { person: PersonResult | null; 
   if (!person) return <Modal open={false} onClose={onClose} title="" />;
 
   const extraFields: Array<[string, string | null]> = [
+    ['رقم رخصة السياقة', person.license],
     ['اللقب', person.nickname],
     ['الهاتف', person.phone],
     ['العنوان', person.address],
@@ -29,12 +30,12 @@ export function PersonModal({ person, onClose }: { person: PersonResult | null; 
     <Modal open={Boolean(person)} onClose={onClose} title={person.name || 'شخص غير معروف'}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-4">
-          <InfoBox label="CIN" value={person.cin || '—'} />
+          <InfoBox label="ب ت و (CIN)" value={person.cin || '—'} />
           <InfoBox
             label="الجنس"
             value={person.gender === 'male' ? 'ذكر' : person.gender === 'female' ? 'أنثى' : '—'}
           />
-          <InfoBox label="الفئة العمرية" value={person.age_range || '—'} />
+          <InfoBox label="العمر" value={person.age_range || '—'} />
           <InfoBox label="عدد الحوادث" value={String(person.event_count)} highlight />
         </div>
 

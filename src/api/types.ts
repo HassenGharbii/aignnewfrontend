@@ -80,6 +80,7 @@ export interface PersonHistoryRecord {
 export interface PersonResult {
   cin: string;
   name: string;
+  license: string | null;
   nickname: string | null;
   gender: string;
   age_range: string;

@@ -11,8 +11,10 @@ legal/administrative case status, since the source feed doesn't expose one.
 """
 
 import hashlib
+import re
 
 from . import governorates
+from .person_details import person_details
 
 PRIORITY_BY_SEVERITY = {"حرج": 1, "مرتفع": 2, "متوسط": 3, "منخفض": 4}
 
@@ -84,21 +86,30 @@ def to_dashboard_event(processed, raw) -> dict:
 
 
 def extract_people(processed, row: dict) -> list[dict]:
-    """Real fields only: name + license, cross-referenced by whichever is
-    present. No gender/age/occupation/risk_level/criminal_record — the
-    extraction pipeline doesn't capture those, and fabricating them for real,
+    """Real fields only: name + license from the LLM, plus CIN, license,
+    gender, age and occupation read verbatim from the report text (see
+    person_details). Nothing is inferred: risk_level/criminal_record and any
+    detail the report doesn't state stay empty — fabricating them for real,
     named individuals in real incident reports would be irresponsible."""
     data = processed.data or {}
     drivers = ((data.get("الأطراف") or {}).get("السائقون")) or []
     people = []
     for d in drivers:
         name = (d.get("الاسم") or "").strip()
-        license_ = (d.get("الرخصة") or "").strip()
-        if not name and not license_:
+        llm_id = (d.get("الرخصة") or "").strip()
+        if not name and not llm_id:
             continue
+        # The LLM's single "الرخصة" field holds either a license or a CIN
+        # (8 digits); prefer what the report text states explicitly.
+        details = person_details(row["event_summary"], name, row["event_time"])
+        llm_is_cin = bool(re.fullmatch(r"\d{8}", llm_id))
         people.append({
             "name": name,
-            "cin": license_,
+            "cin": details["cin"] or (llm_id if llm_is_cin else ""),
+            "license": details["license"] or (llm_id if llm_id and not llm_is_cin else None),
+            "gender": details["gender"],
+            "age_range": details["age_range"],
+            "occupation": details["occupation"],
             "record": {
                 "record_id": processed.id,
                 "created_at": row["created_at"],

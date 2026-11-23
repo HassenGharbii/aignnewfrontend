@@ -241,7 +241,10 @@ def people_search(
     processed_by_id = {row["id"]: row for row in rows}
     all_done = crud.list_done_with_raw(db)
 
+    # Group every mention first, then filter on the merged person, so a CIN
+    # search also returns that person's reports where the CIN wasn't stated.
     people_by_key: dict[str, dict] = {}
+    key_by_name: dict[str, str] = {}
     for processed, _raw in all_done:
         row = processed_by_id.get(processed.id)
         if row is None:
@@ -249,16 +252,24 @@ def people_search(
         for person in serialize.extract_people(processed, row):
             name = person["name"]
             cin_value = person["cin"]
-            if query and query.strip().lower() not in name.lower():
-                continue
-            if cin and cin.strip() not in cin_value:
-                continue
-            key = cin_value or name or f"anon-{processed.id}"
+            key = cin_value or key_by_name.get(name) or name or f"anon-{processed.id}"
+            if (
+                cin_value
+                and name
+                and key_by_name.get(name) == name
+                and name in people_by_key
+                and cin_value not in people_by_key
+            ):
+                # Seen earlier by name only — re-key that bucket under the CIN.
+                people_by_key[cin_value] = people_by_key.pop(name)
+            if name and (cin_value or name not in key_by_name):
+                key_by_name[name] = key
             bucket = people_by_key.setdefault(
                 key,
                 {
-                    "cin": cin_value,
+                    "cin": "",
                     "name": name,
+                    "license": None,
                     "nickname": None,
                     "gender": None,
                     "age_range": None,
@@ -272,10 +283,22 @@ def people_search(
                     "history": [],
                 },
             )
+            for field in ("cin", "license", "gender", "age_range", "occupation"):
+                if person[field] and not bucket[field]:
+                    bucket[field] = person[field]
+            if any(h["record_id"] == processed.id for h in bucket["history"]):
+                continue  # same person listed twice in one report
             bucket["event_count"] += 1
             bucket["history"].append(person["record"])
             if not bucket["last_seen"] or (person["record"]["event_datetime"] or "") > bucket["last_seen"]:
                 bucket["last_seen"] = person["record"]["event_datetime"]
 
-    results = list(people_by_key.values())[offset : offset + limit]
-    return {"count": len(people_by_key), "results": results}
+    people = list(people_by_key.values())
+    if query and query.strip():
+        needle = query.strip().lower()
+        people = [p for p in people if needle in (p["name"] or "").lower()]
+    if cin and cin.strip():
+        needle = cin.strip()
+        people = [p for p in people if needle in (p["cin"] or "") or needle in (p["license"] or "")]
+
+    return {"count": len(people), "results": people[offset : offset + limit]}
