@@ -1,6 +1,7 @@
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from .serialize import event_summary_hash
 from . import models
 
 # Must match the expression index created in db.init_db (same function, same argument
@@ -20,6 +21,7 @@ def upsert_raw_event(db: Session, event: dict) -> models.RawEvent:
     raw.address = event.get("address")
     raw.event_place = event.get("event_place")
     raw.event_summary = event.get("event_summary")
+    raw.summary_hash = event_summary_hash(raw.event_summary)
     raw.status = event.get("status")
     raw.sender_mail = event.get("senderMail")
     raw.event_time = event.get("time")

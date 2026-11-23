@@ -208,6 +208,13 @@ def fetch_unclassified(db: Session, limit: int) -> list[models.RawEvent]:
                 & (models.ProcessedEvent.is_edited.is_(False))
                 & (models.ProcessedEvent.attempts < config.MAX_CLASSIFY_ATTEMPTS)
             )
+            # A corrected version arrived under the same reference: re-extract it.
+            | (
+                (models.ProcessedEvent.status == "done")
+                & (models.ProcessedEvent.is_edited.is_(False))
+                & (models.ProcessedEvent.attempts < config.MAX_CLASSIFY_ATTEMPTS)
+                & (models.ProcessedEvent.source_hash != models.RawEvent.summary_hash)
+            )
         )
         .order_by(models.ProcessedEvent.id.isnot(None), models.RawEvent.fetched_at.asc())
         .limit(limit)
@@ -215,7 +222,14 @@ def fetch_unclassified(db: Session, limit: int) -> list[models.RawEvent]:
     )
 
 
-def save(db: Session, reference: str, data: dict | None, status: str, error: str | None) -> None:
+def save(
+    db: Session,
+    reference: str,
+    data: dict | None,
+    status: str,
+    error: str | None,
+    source_hash: str | None = None,
+) -> None:
     processed = db.query(models.ProcessedEvent).filter_by(reference=reference).first()
     if processed is None:
         processed = models.ProcessedEvent(reference=reference)
@@ -223,6 +237,7 @@ def save(db: Session, reference: str, data: dict | None, status: str, error: str
     processed.data = data
     processed.status = status
     processed.error = error
+    processed.source_hash = source_hash
     if status == "failed":
         processed.attempts = (processed.attempts or 0) + 1
         if processed.attempts >= config.MAX_CLASSIFY_ATTEMPTS:
@@ -241,7 +256,7 @@ def classify_row(db: Session, raw: models.RawEvent, categories: list[str], categ
     if not summary:
         # Marked, not just skipped in memory: an unmarked row is pulled again
         # every cycle and occupies a batch slot forever.
-        save(db, raw.reference, data=None, status="skipped", error="empty event_summary")
+        save(db, raw.reference, data=None, status="skipped", error="empty event_summary", source_hash=raw.summary_hash)
         return None
 
     subject = raw.subject or ""
@@ -264,9 +279,15 @@ def classify_row(db: Session, raw: models.RawEvent, categories: list[str], categ
         # A failed re-classification must not wipe out a record that was already classified.
         if existing is None or existing.status != "done":
             save(db, raw.reference, data=None, status="failed", error=str(exc))
+        else:
+            # Re-extraction of a corrected report failed: keep the previous figures,
+            # but count the attempt so it is not retried forever.
+            existing.attempts = (existing.attempts or 0) + 1
+            existing.error = str(exc)
+            db.commit()
         return False
 
-    save(db, raw.reference, data=record, status="done", error=None)
+    save(db, raw.reference, data=record, status="done", error=None, source_hash=raw.summary_hash)
     return True
 
 
@@ -340,6 +361,47 @@ def backfill_all(db: Session) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Periodic re-check: corrected reports keep their reference (and maybe their
+# time), so the forward-moving poll window alone would never see them again.
+# ---------------------------------------------------------------------------
+def recheck_due(last_run: float | None, now: float) -> bool:
+    interval = config.RECHECK_INTERVAL_SECONDS
+    if interval <= 0:
+        return False
+    return last_run is None or now - last_run >= interval
+
+
+def recheck_recent(db: Session) -> dict:
+    """Re-fetch the last RECHECK_WINDOW_HOURS before the poll position and store
+    any changed text; the classify loop then re-extracts those rows. The poll
+    position itself is not moved."""
+    state = crud.get_or_create_poll_state(db, config.DEFAULT_START_DATE)
+    start = (
+        datetime.fromisoformat(state.next_start) - timedelta(hours=config.RECHECK_WINDOW_HOURS)
+    ).isoformat()
+    try:
+        events = fetch_events(start)
+    except requests.RequestException as exc:
+        log(f"[recheck] request failed: {exc}")
+        return {"fetched": 0, "changed": 0, "new": 0}
+
+    changed = new = 0
+    for event in events:
+        reference = event.get("reference")
+        if not reference:
+            continue
+        before = db.query(models.RawEvent.summary_hash).filter_by(reference=reference).scalar()
+        raw = crud.upsert_raw_event(db, event)
+        if before is None:
+            new += 1
+        elif before != raw.summary_hash:
+            changed += 1
+            log(f"[recheck] reference={reference} text changed, queued for re-extraction")
+    log(f"[recheck] window from {start}: fetched={len(events)} changed={changed} new={new}")
+    return {"fetched": len(events), "changed": changed, "new": new}
+
+
+# ---------------------------------------------------------------------------
 # Combined cycle: fetch first, then classify what's now available
 # ---------------------------------------------------------------------------
 def run_cycle(db: Session) -> dict:
@@ -367,9 +429,13 @@ def main():
             db.close()
 
     log(f"[worker] starting, running fetch+classify every {POLL_INTERVAL_SECONDS}s")
+    last_recheck = None
     while True:
         db = SessionLocal()
         try:
+            if recheck_due(last_recheck, time.monotonic()):
+                last_recheck = time.monotonic()
+                recheck_recent(db)
             run_cycle(db)
         except Exception as exc:
             log(f"[worker] cycle failed: {exc}")

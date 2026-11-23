@@ -17,6 +17,8 @@ class RawEvent(Base):
     address = Column(String, nullable=True)
     event_place = Column(String)
     event_summary = Column(Text)
+    # sha256 of event_summary as last received; a different value on re-fetch = corrected report.
+    summary_hash = Column(String(64), nullable=True)
     status = Column(String)
     sender_mail = Column(String, nullable=True)
     event_time = Column(String)  # kept as the raw ISO string from the source API
@@ -40,6 +42,9 @@ class ProcessedEvent(Base):
     error = Column(Text, nullable=True)
     attempts = Column(Integer, default=0, server_default="0", nullable=False)  # consecutive failures
     is_edited = Column(Boolean, default=False, nullable=False)
+    # sha256 of the raw text `data` was extracted from; differs from raw_events.summary_hash
+    # when the source sent a corrected version that has not been re-extracted yet.
+    source_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

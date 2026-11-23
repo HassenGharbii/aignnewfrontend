@@ -54,3 +54,8 @@ ACCIDENT_CAUSES_FILE = BASE_DIR / os.getenv("ACCIDENT_CAUSES_FILE", "accident_ca
 # safety margin against events landing slightly out of order.
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "60"))
 POLL_OVERLAP_MINUTES = int(os.getenv("POLL_OVERLAP_MINUTES", "5"))
+# Corrected reports come back under the same reference. Every RECHECK_INTERVAL_SECONDS
+# the worker re-fetches the last RECHECK_WINDOW_HOURS of events so a correction is seen
+# even if it kept its original time; a changed text is then re-extracted. 0 disables.
+RECHECK_INTERVAL_SECONDS = int(os.getenv("RECHECK_INTERVAL_SECONDS", "3600"))
+RECHECK_WINDOW_HOURS = int(os.getenv("RECHECK_WINDOW_HOURS", "48"))
