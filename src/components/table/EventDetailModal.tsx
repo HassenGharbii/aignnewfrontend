@@ -109,6 +109,33 @@ export function EventDetailModal({ event, onClose }: { event: ParsedEvent | null
           </div>
         )}
 
+        {event.versions && event.versions.length > 0 && (
+          <div>
+            <div className="mb-1.5 text-xs font-medium text-slate-400">
+              نسخ سابقة لنفس الحادث ({formatNumber(event.versions.length)})
+            </div>
+            <ul className="space-y-1.5">
+              {event.versions.map((v) => (
+                <li
+                  key={v.reference}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/8 bg-white/[0.02] px-2.5 py-1.5 text-xs text-slate-300"
+                >
+                  <span className="font-mono text-slate-200" dir="ltr">
+                    {v.reference}
+                  </span>
+                  <span className="text-slate-500">
+                    {formatDateTime(v.event_time)}
+                    {v.source && ` · ${v.source}`}
+                  </span>
+                  <span className="text-slate-400">
+                    قتلى {formatNumber(v.deaths ?? 0)} · جرحى {formatNumber(v.injuries ?? 0)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <details className="rounded-xl border border-white/8 p-3 text-sm text-slate-300">
           <summary className="cursor-pointer text-xs font-medium text-slate-400">النص الأصلي للبلاغ</summary>
           <p className="mt-2 leading-relaxed whitespace-pre-wrap">{event.event_summary}</p>

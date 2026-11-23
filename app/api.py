@@ -123,10 +123,32 @@ def reset_poll_state(start: str, db: Session = Depends(get_db)):
 # being true.
 # ---------------------------------------------------------------------------
 def _dashboard_rows(db: Session, category: str | None = None) -> list[dict]:
-    return [
-        serialize.to_dashboard_event(processed, raw)
-        for processed, raw in crud.list_done_with_raw(db, category)
-    ]
+    """One row per event (the main report of each group), each carrying its
+    other reports as `versions`, oldest first."""
+    pairs = crud.list_done_with_raw(db, category)
+    versions: dict[str, list[dict]] = {}
+    grouped = {processed.group_ref for processed, _raw in pairs if processed.group_ref}
+    if grouped:
+        others = (
+            db.query(models.ProcessedEvent, models.RawEvent)
+            .join(models.RawEvent, models.RawEvent.reference == models.ProcessedEvent.reference)
+            .filter(
+                models.ProcessedEvent.status == "done",
+                models.ProcessedEvent.is_main.is_(False),
+                models.ProcessedEvent.group_ref.in_(grouped),
+            )
+            .all()
+        )
+        for processed, raw in others:
+            versions.setdefault(processed.group_ref, []).append(serialize.to_version(processed, raw))
+        for items in versions.values():
+            items.sort(key=lambda v: v["event_time"] or "")
+    rows = []
+    for processed, raw in pairs:
+        row = serialize.to_dashboard_event(processed, raw)
+        row["versions"] = versions.get(processed.group_ref, []) if processed.group_ref else []
+        rows.append(row)
+    return rows
 
 
 @app.get("/api/categories")

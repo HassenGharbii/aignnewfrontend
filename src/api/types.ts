@@ -41,6 +41,16 @@ export interface RawEvent {
   updated_at: string | null;
   classification_scores: unknown;
   sub_category_score: unknown;
+  /** Other reports of the same accident (re-sent or followed up), oldest first. */
+  versions?: EventVersion[];
+}
+
+export interface EventVersion {
+  reference: string;
+  event_time: string | null;
+  source: string | null;
+  deaths: number | null;
+  injuries: number | null;
 }
 
 export interface EventsPage {

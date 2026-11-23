@@ -18,6 +18,13 @@ def init_db():
         )
         conn.execute(text("ALTER TABLE raw_events ADD COLUMN IF NOT EXISTS summary_hash VARCHAR(64)"))
         conn.execute(text("ALTER TABLE processed_events ADD COLUMN IF NOT EXISTS source_hash VARCHAR(64)"))
+        conn.execute(text("ALTER TABLE processed_events ADD COLUMN IF NOT EXISTS group_ref VARCHAR"))
+        conn.execute(
+            text("ALTER TABLE processed_events ADD COLUMN IF NOT EXISTS is_main BOOLEAN NOT NULL DEFAULT true")
+        )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_processed_events_group_ref ON processed_events (group_ref)")
+        )
         # Rows from before version tracking: assume their extraction matches the text
         # we hold now, so deploying this does not re-run the model on the whole backlog.
         # Same hex sha256 of the UTF-8 text as serialize.event_summary_hash. Only touches

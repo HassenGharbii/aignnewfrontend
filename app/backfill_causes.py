@@ -104,7 +104,7 @@ def main() -> None:
 
     db = SessionLocal()
     try:
-        pairs = crud.list_done_with_raw(db, config.CATEGORY)
+        pairs = crud.list_done_with_raw(db, config.CATEGORY, main_only=False)
 
         def save(processed, data):
             processed.data = data

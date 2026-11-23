@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from . import config, crud, models
 from .db import SessionLocal, init_db
+from .grouping import group_all
 from .pipeline import (
     classify_subcategory,
     clean_parties,
@@ -314,6 +315,10 @@ def classify_once(db: Session) -> dict:
             failed_count += 1
         else:
             skipped_count += 1
+
+    if classified_count:
+        # New or re-extracted reports may belong to an existing event.
+        group_all(db)
 
     log(
         f"[classify] pulled={len(rows)} classified={classified_count} "

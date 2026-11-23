@@ -87,6 +87,18 @@ def to_dashboard_event(processed, raw) -> dict:
     }
 
 
+def to_version(processed, raw) -> dict:
+    """An earlier/other report of the same event, for the event's history."""
+    facts = (processed.data or {}).get("تفاصيل_الحادث") or {}
+    return {
+        "reference": raw.reference,
+        "event_time": raw.event_time,
+        "source": raw.source,
+        "deaths": facts.get("عدد_الوفيات"),
+        "injuries": facts.get("عدد_الإصابات"),
+    }
+
+
 def extract_people(processed, row: dict) -> list[dict]:
     """Real fields only: name + license from the LLM, plus CIN, license,
     gender, age and occupation read verbatim from the report text (see

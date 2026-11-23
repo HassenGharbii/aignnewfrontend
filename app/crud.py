@@ -58,13 +58,16 @@ def save_processed_event(
 
 
 def list_done_with_raw(
-    db: Session, category: str | None = None
+    db: Session, category: str | None = None, main_only: bool = True
 ) -> list[tuple[models.ProcessedEvent, models.RawEvent]]:
+    """main_only: one row per event (see app/grouping.py), as the dashboard counts them."""
     query = (
         db.query(models.ProcessedEvent, models.RawEvent)
         .join(models.RawEvent, models.RawEvent.reference == models.ProcessedEvent.reference)
         .filter(models.ProcessedEvent.status == "done")
     )
+    if main_only:
+        query = query.filter(models.ProcessedEvent.is_main.is_(True))
     if category:
         query = query.filter(CATEGORY_EXPR == category)
     # id tie-breaker: clients page across separate requests, and equal created_at

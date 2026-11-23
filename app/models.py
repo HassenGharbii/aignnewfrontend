@@ -45,6 +45,10 @@ class ProcessedEvent(Base):
     # sha256 of the raw text `data` was extracted from; differs from raw_events.summary_hash
     # when the source sent a corrected version that has not been re-extracted yet.
     source_hash = Column(String(64), nullable=True)
+    # Reports of the same accident share group_ref (the earliest one's reference);
+    # only the is_main one is counted by the dashboard. See app/grouping.py.
+    group_ref = Column(String, nullable=True, index=True)
+    is_main = Column(Boolean, default=True, server_default="true", nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

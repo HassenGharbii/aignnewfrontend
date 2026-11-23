@@ -94,3 +94,29 @@ docker compose exec -T api python -m app.recheck_old       # re-extractions of c
 docker compose exec -T db psql -U morour -d morour -c \
   "UPDATE processed_events SET attempts = 0 WHERE status = 'failed' AND attempts >= 3;"
 ```
+
+## Counting each accident once (grouping report versions)
+
+The same accident arrives as several reports under different references
+(re-sent by the governorate, corrected, or followed up citing «عدد NNNNNN»).
+`app/grouping.py` links them into one event; the dashboard counts only the
+event's main report (the latest, or the hand-edited one) and lists the others
+as its versions. Nothing is deleted.
+
+```bash
+git pull
+docker compose up -d --build api worker web
+docker compose exec -T api python -m app.group_reports --dry-run   # counts only
+docker compose exec -T api python -m app.group_reports             # save
+```
+
+The output line is `[group] reports=… events=… merged=…`. After that the worker
+regroups automatically after every cycle that classified something.
+
+Undo (every report counted again, as before). Deploy the previous commit
+first, otherwise the worker regroups on its next cycle:
+
+```bash
+docker compose exec -T db psql -U morour -d morour -c \
+  "UPDATE processed_events SET is_main = true, group_ref = NULL;"
+```
