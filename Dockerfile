@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir --timeout 120 --retries 10 -r requirements.txt
 COPY app ./app
 # categories.json is read by worker.py at a fixed path (BASE_DIR/categories.json),
 # not via an env var — without it the classify loop fails every cycle.
-COPY subcategory.txt schemaextractevent.txt data.json.txt categories.json ./
+COPY subcategory.txt schemaextractevent.txt data.json.txt categories.json accident_causes.txt ./
 
 ENV PYTHONUNBUFFERED=1
 

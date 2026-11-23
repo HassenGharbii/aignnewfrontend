@@ -169,6 +169,27 @@ PARTY_TYPES = [
     "عربة مجرورة",
 ]
 
+def load_accident_causes(path) -> list[str]:
+    """One cause per line, official order; blank lines and a BOM are ignored."""
+    with open(path, encoding="utf-8-sig") as f:
+        return [line.strip() for line in f if line.strip()]
+
+
+ACCIDENT_CAUSES = load_accident_causes(config.ACCIDENT_CAUSES_FILE)
+
+
+def normalize_causes(values) -> list[str]:
+    """Keep list causes only, first occurrence each. The schema has no
+    uniqueItems (xgrammar support is uncertain), so duplicates are removed here."""
+    if not isinstance(values, list):
+        return []
+    out: list[str] = []
+    for v in values:
+        if v in ACCIDENT_CAUSES and v not in out:
+            out.append(v)
+    return out
+
+
 # All extraction fields in a single call/schema. This used to be split into one
 # call per section to keep each grammar small (a combined schema was slow and,
 # on a 1B model, unreliable) — but the regressions that caused were traced to
@@ -228,8 +249,15 @@ EXTRACTION_SCHEMA = {
                 "مواد_خطرة_متسربة",
             ],
         },
+        # No "not stated" value on purpose: the model must stay within the list.
+        "أسباب_الحادث": {
+            "type": "array",
+            "items": {"type": "string", "enum": ACCIDENT_CAUSES},
+            "minItems": 1,
+            "maxItems": 5,
+        },
     },
-    "required": ["كلمات_مفتاحية", "الموقع", "الأطراف", "تفاصيل_الحادث"],
+    "required": ["كلمات_مفتاحية", "الموقع", "الأطراف", "تفاصيل_الحادث", "أسباب_الحادث"],
 }
 
 EXTRACTION_INSTRUCTIONS = (
@@ -265,6 +293,13 @@ EXTRACTION_INSTRUCTIONS = (
     "رقم صريح، عُدّ فقط الأشخاص المذكورين بالاسم بصفتهم مصابين أو متوفين فعليًا في نتيجة "
     "الحادث — لا تحتسب السائقين غير المصابين، ولا الشهود، ولا الأب/الأم المذكورين ضمن نسب "
     "شخص آخر للتعريف بهويته.\n\n"
+    "- أسباب_الحادث: اختر فقط من قائمة الأسباب المتاحة في المخطط، ولا تكتب سببًا خارجها. "
+    "خذ الأسباب مما يذكره النص، وعادة ما ترد في قسم \"الأسباب المحتملة\"، وطابق كل صياغة "
+    "مع أقرب عنصر في القائمة (مثال: \"الإفراط في السرعة\" → \"السرعة\"، \"عدم ترك أولوية "
+    "المرور\" → \"عدم احترام الأولوية\"). أدرج كل سبب مذكور دون تكرار نفس السبب. إن لم "
+    "يذكر النص أي سبب صراحة، اختر سببًا واحدًا هو الأقرب من القائمة بحسب وصف الحادث. "
+    "\"إهمال حدث\" يعني تقصير الولي أو المسؤول في رعاية قاصر (غالبًا طفل) أدى إلى تورطه في "
+    "الحادث، مثل طفل ترك دون رقابة فقطع الطريق أو صدمته مركبة.\n\n"
     "أعد النتيجة ككائن JSON مطابق للمخطط المطلوب فقط."
 )
 
@@ -312,6 +347,7 @@ def build_event_record(event: dict, subcategory: dict, extraction: dict) -> dict
         },
         "الأطراف": extraction.get("الأطراف", {}),
         "تفاصيل_الحادث": extraction.get("تفاصيل_الحادث", {}),
+        "أسباب_الحادث": normalize_causes(extraction.get("أسباب_الحادث")),
         "النص_الأصلي": event.get("event_summary"),
     }
 

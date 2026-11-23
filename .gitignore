@@ -31,3 +31,6 @@ dist-ssr
 # Python
 __pycache__/
 *.py[cod]
+
+# Reference documents kept local (not pushed)
+*.pdf

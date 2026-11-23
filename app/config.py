@@ -46,6 +46,8 @@ EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "Qwen/Qwen3-8B-AWQ")
 USE_SAMPLE_DATA = os.getenv("USE_SAMPLE_DATA", "false").strip().lower() in ("1", "true", "yes")
 SAMPLE_DATA_FILE = BASE_DIR / os.getenv("SAMPLE_DATA_FILE", "data.json.txt")
 SUBCATEGORY_FILE = BASE_DIR / os.getenv("SUBCATEGORY_FILE", "subcategory.txt")
+# Official list of accident causes (from اسباب الحوادث.pdf, kept out of git).
+ACCIDENT_CAUSES_FILE = BASE_DIR / os.getenv("ACCIDENT_CAUSES_FILE", "accident_causes.txt")
 
 # How often the worker polls the source API for new events, and how far back
 # (in minutes) it re-queries past the latest event time it already saw, as a

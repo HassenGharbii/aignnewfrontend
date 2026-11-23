@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from . import config, crud, models
 from .db import SessionLocal, init_db
-from .pipeline import classify_subcategory, extract_details, vllm_chat_json
+from .pipeline import classify_subcategory, extract_details, normalize_causes, vllm_chat_json
 
 
 def log(*args):
@@ -186,6 +186,7 @@ def build_record(raw: models.RawEvent, category: str, subcategory: dict, extract
         },
         "الأطراف": extraction.get("الأطراف", {}),
         "تفاصيل_الحادث": extraction.get("تفاصيل_الحادث", {}),
+        "أسباب_الحادث": normalize_causes(extraction.get("أسباب_الحادث")),
         "النص_الأصلي": raw.event_summary,
     }
 
