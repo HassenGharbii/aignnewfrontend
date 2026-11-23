@@ -38,7 +38,7 @@ export function FilterBar() {
     toggleImada,
     toggleSeverity,
     toggleStatus,
-    toggleSubCategory,
+    toggleCause,
     toggleVerification,
     setDateRange,
     clearFilters,
@@ -80,11 +80,8 @@ export function FilterBar() {
     () => countGrouped(allEvents.map((e) => e.event_status).filter(Boolean)).map(([name]) => name),
     [allEvents],
   );
-  const subCategories = useMemo(
-    () =>
-      countGrouped(allEvents.map((e) => e.sub_category).filter((v): v is string => Boolean(v))).map(
-        ([name]) => name,
-      ),
+  const causes = useMemo(
+    () => countGrouped(allEvents.flatMap((e) => e.causes)).map(([name]) => name),
     [allEvents],
   );
   const verifications = useMemo(
@@ -141,9 +138,9 @@ export function FilterBar() {
           <FilterGroup label="حالة الحدث">
             <MultiSelectDropdown options={statuses} active={filters.statuses} onToggle={toggleStatus} toneFor={statusTone} />
           </FilterGroup>
-          {subCategories.length > 1 && (
-            <FilterGroup label="سبب/نوع الحادث">
-              <MultiSelectDropdown options={subCategories} active={filters.subCategories} onToggle={toggleSubCategory} />
+          {causes.length > 0 && (
+            <FilterGroup label="سبب الحادث">
+              <MultiSelectDropdown options={causes} active={filters.causes} onToggle={toggleCause} />
             </FilterGroup>
           )}
           {verifications.length > 0 && (

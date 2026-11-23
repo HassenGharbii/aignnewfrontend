@@ -41,6 +41,8 @@ export interface RawEvent {
   updated_at: string | null;
   classification_scores: unknown;
   sub_category_score: unknown;
+  /** Official accident causes (accident_causes.txt); [] = not extracted yet. */
+  causes: string[];
 }
 
 export interface EventsPage {

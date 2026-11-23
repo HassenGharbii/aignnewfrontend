@@ -123,6 +123,15 @@ export function buildReportData(events: ParsedEvent[], periodLabel: string): Rep
       partyCounts.set(type, (partyCounts.get(type) ?? 0) + 1);
     }
   }
+  // Like party types, an accident with several causes counts once under each.
+  const causeCounts = new Map<string, number>();
+  for (const e of events) {
+    for (const cause of new Set(e.causes)) causeCounts.set(cause, (causeCounts.get(cause) ?? 0) + 1);
+  }
+  const byCause = [...causeCounts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+
   const byPartyType = [...partyCounts.entries()]
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count);
@@ -149,7 +158,7 @@ export function buildReportData(events: ParsedEvent[], periodLabel: string): Rep
     byLocationDeaths: locationBreakdown(events, (e) => e.parsed.facts.عدد_الوفيات ?? 0),
     byLocationInjuries: locationBreakdown(events, (e) => e.parsed.facts.عدد_الإصابات ?? 0),
     byRoadType: countBy(events, (e) => e.parsed.facts.نوع_الطريق),
-    byCause: countBy(events, (e) => e.sub_category),
+    byCause,
     byDayOfWeek,
     byHourOfDay,
     byPartyType,

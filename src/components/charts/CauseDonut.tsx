@@ -5,13 +5,18 @@ import { useFilters } from '../../context/FiltersContext';
 import { truncate, formatNumber } from '../../lib/format';
 import { PALETTE, CHART_TOOLTIP_STYLE } from '../../lib/palette';
 import { countGrouped } from '../../lib/arabicText';
+import { UNKNOWN_CAUSE } from '../../lib/causes';
 
 export function CauseDonut() {
-  const { filteredEvents, filters, toggleSubCategory } = useFilters();
+  const { filteredEvents, filters, toggleCause } = useFilters();
 
   const data = useMemo(() => {
     const total = filteredEvents.length || 1;
-    const grouped = countGrouped(filteredEvents.map((e) => e.sub_category ?? 'غير مصنّف'));
+    // One accident can have several causes: each distinct cause counts once per
+    // event, and percentages are of events, so they can add up past 100%.
+    const grouped = countGrouped(
+      filteredEvents.flatMap((e) => (e.causes.length > 0 ? [...new Set(e.causes)] : [UNKNOWN_CAUSE])),
+    );
     const top = grouped.slice(0, PALETTE.length - 1);
     const otherCount = grouped.slice(PALETTE.length - 1).reduce((sum, [, count]) => sum + count, 0);
     const rows = otherCount > 0 ? [...top, ['أخرى', otherCount] as [string, number]] : top;
@@ -23,7 +28,7 @@ export function CauseDonut() {
   }, [filteredEvents]);
 
   return (
-    <Card title="أسباب/أنواع الحوادث" subtitle="اضغط عنصرًا في القائمة للتصفية">
+    <Card title="أسباب الحوادث" subtitle="قد يكون للحادث أكثر من سبب · اضغط عنصرًا للتصفية">
       <div className="flex flex-1 flex-col items-center justify-center gap-4 sm:flex-row">
         <ResponsiveContainer width="100%" height={220} className="max-w-[220px]">
           <PieChart>
@@ -32,7 +37,7 @@ export function CauseDonut() {
                 <Cell
                   key={d.name}
                   fill={PALETTE[i % PALETTE.length]}
-                  opacity={filters.subCategories.size === 0 || filters.subCategories.has(d.name) ? 1 : 0.25}
+                  opacity={filters.causes.size === 0 || filters.causes.has(d.name) ? 1 : 0.25}
                 />
               ))}
             </Pie>
@@ -48,13 +53,13 @@ export function CauseDonut() {
 
         <div className="flex w-full flex-1 flex-col gap-1.5">
           {data.map((d, i) => {
-            const isOther = d.name === 'أخرى';
-            const isActive = !isOther && filters.subCategories.has(d.name);
-            const isDimmed = !isOther && filters.subCategories.size > 0 && !isActive;
+            const isOther = d.name === 'أخرى' || d.name === UNKNOWN_CAUSE;
+            const isActive = !isOther && filters.causes.has(d.name);
+            const isDimmed = !isOther && filters.causes.size > 0 && !isActive;
             return (
               <button
                 key={d.name}
-                onClick={isOther ? undefined : () => toggleSubCategory(d.name)}
+                onClick={isOther ? undefined : () => toggleCause(d.name)}
                 disabled={isOther}
                 className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-right transition ${
                   isOther ? 'cursor-default' : 'hover:bg-white/5'
