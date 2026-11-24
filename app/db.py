@@ -25,6 +25,12 @@ def init_db():
         conn.execute(
             text("CREATE INDEX IF NOT EXISTS ix_processed_events_group_ref ON processed_events (group_ref)")
         )
+        # Existing rows start as not approved; app.backfill_approval marks the approved ones.
+        conn.execute(text("ALTER TABLE raw_events ADD COLUMN IF NOT EXISTS actor VARCHAR"))
+        conn.execute(
+            text("ALTER TABLE raw_events ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT false")
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_raw_events_approved ON raw_events (approved)"))
         # Rows from before version tracking: assume their extraction matches the text
         # we hold now, so deploying this does not re-run the model on the whole backlog.
         # Same hex sha256 of the UTF-8 text as serialize.event_summary_hash. Only touches

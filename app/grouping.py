@@ -84,7 +84,7 @@ def _link_near_copies(db, groups: _Groups, by_ref: dict) -> None:
     rows = (
         db.query(P.reference, opening.label("opening"))
         .join(R, R.reference == P.reference)
-        .filter(P.status == "done", func.length(R.event_summary) >= OPENING_CHARS)
+        .filter(P.status == "done", R.approved.is_(True), func.length(R.event_summary) >= OPENING_CHARS)
         .all()
     )
     buckets = {}
@@ -106,7 +106,8 @@ def _order(row):
 
 def group_all(db, dry_run: bool = False) -> dict:
     P, R = models.ProcessedEvent, models.RawEvent
-    done = (P.status == "done")
+    # Approved reports only: an operator copy must never become an event's main report.
+    done = (P.status == "done") & R.approved.is_(True)
     rows = (
         db.query(
             P.id, P.reference, P.is_edited, P.group_ref, P.is_main,

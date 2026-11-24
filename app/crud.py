@@ -2,19 +2,34 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .serialize import event_summary_hash
-from . import models
+from . import config, models
 
 # Must match the expression index created in db.init_db (same function, same argument
 # order) or Postgres cannot use the index.
 CATEGORY_EXPR = func.json_extract_path_text(models.ProcessedEvent.data, "التصنيف", "الصنف_الرئيسي")
 
 
-def upsert_raw_event(db: Session, event: dict) -> models.RawEvent:
+def is_approved(event: dict) -> bool:
+    return event.get("actor") == config.APPROVED_ACTOR
+
+
+def sort_oldest_first(events: list) -> list:
+    """The source lists newest first. Storing in that order would leave the OLDEST
+    version of a reference in raw_events; oldest first makes the newest win."""
+    return sorted(events, key=lambda e: e.get("time") or "")
+
+
+def upsert_raw_event(db: Session, event: dict, commit: bool = True) -> models.RawEvent:
     reference = event.get("reference")
     raw = db.query(models.RawEvent).filter_by(reference=reference).first()
     if raw is None:
         raw = models.RawEvent(reference=reference)
         db.add(raw)
+    elif raw.approved and not is_approved(event):
+        # An operator copy never replaces the approved version.
+        return raw
+    raw.actor = event.get("actor")
+    raw.approved = is_approved(event)
     raw.source = event.get("source")
     raw.target = event.get("target")
     raw.subject = event.get("subject")
@@ -25,8 +40,11 @@ def upsert_raw_event(db: Session, event: dict) -> models.RawEvent:
     raw.status = event.get("status")
     raw.sender_mail = event.get("senderMail")
     raw.event_time = event.get("time")
-    db.commit()
-    db.refresh(raw)
+    if commit:
+        db.commit()
+        db.refresh(raw)
+    else:
+        db.flush()
     return raw
 
 
@@ -64,7 +82,7 @@ def list_done_with_raw(
     query = (
         db.query(models.ProcessedEvent, models.RawEvent)
         .join(models.RawEvent, models.RawEvent.reference == models.ProcessedEvent.reference)
-        .filter(models.ProcessedEvent.status == "done")
+        .filter(models.ProcessedEvent.status == "done", models.RawEvent.approved.is_(True))
     )
     if main_only:
         query = query.filter(models.ProcessedEvent.is_main.is_(True))

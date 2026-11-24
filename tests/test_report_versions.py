@@ -12,7 +12,7 @@ NEW = "نص الحادث بعد التصحيح"
 
 
 def _event(ref="R-1-000001", summary=OLD, time="2026-11-23T10:00:00"):
-    return {"reference": ref, "event_summary": summary, "subject": "بشأن حادث مرور", "time": time}
+    return {"reference": ref, "event_summary": summary, "subject": "بشأن حادث مرور", "time": time, "actor": "SOC_Manager"}
 
 
 def _done(db, ref="R-1-000001", summary=OLD, **fields):

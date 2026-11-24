@@ -10,7 +10,7 @@ TEXT = "حادث مرور اصطدام بين سيارتين على الطريق
 
 
 def _report(db, ref, text=TEXT, time="2026-11-20T01:00:00", category=TRAFFIC, deaths=0, **fields):
-    crud.upsert_raw_event(db, {"reference": ref, "event_summary": text, "time": time, "source": f"unit {ref}"})
+    crud.upsert_raw_event(db, {"reference": ref, "event_summary": text, "time": time, "source": f"unit {ref}", "actor": "SOC_Manager"})
     db.add(
         models.ProcessedEvent(
             reference=ref,
@@ -158,7 +158,7 @@ def test_worker_cycle_links_a_new_copy_to_its_event(db_session, monkeypatch):
     monkeypatch.setattr(worker, "load_category_map", lambda: {})
     _report(db_session, "110100-0001-120001", time="2026-11-20T01:00:00")
     crud.upsert_raw_event(
-        db_session, {"reference": "110000-0002-120002", "event_summary": TEXT, "time": "2026-11-20T03:00:00"}
+        db_session, {"reference": "110000-0002-120002", "event_summary": TEXT, "time": "2026-11-20T03:00:00", "actor": "SOC_Manager"}
     )
     assert worker.classify_once(db_session)["classified"] == 1
     assert _main_refs(db_session) == ["110000-0002-120002"]

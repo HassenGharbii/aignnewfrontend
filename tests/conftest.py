@@ -33,7 +33,7 @@ def _schema():
 @pytest.fixture(autouse=True)
 def _clean_tables(_schema):
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE processed_events, raw_events RESTART IDENTITY CASCADE"))
+        conn.execute(text("TRUNCATE processed_events, raw_events, poll_state RESTART IDENTITY CASCADE"))
 
 
 @pytest.fixture
@@ -72,6 +72,8 @@ def make_event(db_session):
                 subject=f"subject {reference}",
                 event_summary=f"summary {reference}",
                 event_time="2026-01-01T00:00:00",
+                actor="SOC_Manager",
+                approved=True,
             )
         )
         db_session.flush()

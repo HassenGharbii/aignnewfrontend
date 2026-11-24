@@ -11,7 +11,7 @@ TRAFFIC = "أحداث مرورية"
 
 
 def _report(db, ref, extracted_from, current, category=TRAFFIC, **fields):
-    crud.upsert_raw_event(db, {"reference": ref, "event_summary": current, "time": "2026-11-23T10:00:00"})
+    crud.upsert_raw_event(db, {"reference": ref, "event_summary": current, "time": "2026-11-23T10:00:00", "actor": "SOC_Manager"})
     data = {"التصنيف": {"الصنف_الرئيسي": category}}
     if extracted_from is not None:
         data["النص_الأصلي"] = extracted_from

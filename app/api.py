@@ -42,7 +42,12 @@ def list_events(
     status: str | None = None,
     db: Session = Depends(get_db),
 ):
-    query = db.query(models.ProcessedEvent).order_by(desc(models.ProcessedEvent.created_at))
+    query = (
+        db.query(models.ProcessedEvent)
+        .join(models.RawEvent, models.RawEvent.reference == models.ProcessedEvent.reference)
+        .filter(models.RawEvent.approved.is_(True))
+        .order_by(desc(models.ProcessedEvent.created_at))
+    )
     if status:
         query = query.filter(models.ProcessedEvent.status == status)
     results = query.all()
@@ -134,6 +139,7 @@ def _dashboard_rows(db: Session, category: str | None = None) -> list[dict]:
             .join(models.RawEvent, models.RawEvent.reference == models.ProcessedEvent.reference)
             .filter(
                 models.ProcessedEvent.status == "done",
+                models.RawEvent.approved.is_(True),
                 models.ProcessedEvent.is_main.is_(False),
                 models.ProcessedEvent.group_ref.in_(grouped),
             )

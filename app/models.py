@@ -22,6 +22,10 @@ class RawEvent(Base):
     status = Column(String)
     sender_mail = Column(String, nullable=True)
     event_time = Column(String)  # kept as the raw ISO string from the source API
+    # Who sent this version. Only actor SOC_Manager is approved; operator versions
+    # (SOC1_OP1, ...) are kept but never classified, grouped or shown.
+    actor = Column(String, nullable=True)
+    approved = Column(Boolean, default=False, server_default="false", nullable=False, index=True)
     fetched_at = Column(DateTime(timezone=True), server_default=func.now())
 
     processed = relationship("ProcessedEvent", back_populates="raw_event", uselist=False)

@@ -29,7 +29,7 @@ services:
     environment:
       LISTEN_PORT: "8004"
       TARGET_HOST: ${PROXY_TARGET_HOST:-172.19.0.37}
-      TARGET_PORT: ${PROXY_TARGET_PORT:-8003}
+      TARGET_PORT: ${PROXY_TARGET_PORT:-8009}
     ports:
       # Published for debugging from the host; api/worker reach it as proxy:8004.
       - "8004:8004"

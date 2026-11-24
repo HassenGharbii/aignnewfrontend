@@ -4,9 +4,9 @@ On startup (unless BACKFILL_ON_START=false) it re-classifies every record
 already in raw_events, skipping ones a user edited by hand (backfill_all).
 Then it loops, one combined cycle per interval:
 
-1. Fetch new events from the source events API, all categories, and store every
-   one seen into raw_events (fetch_new_events).
-2. Pull raw_events rows that have no processed_events row yet (or a failed one
+1. Fetch new approved events (actor SOC_Manager) from the source API, all
+   categories, and store every one seen into raw_events (fetch_new_events).
+2. Pull approved raw_events rows that have no processed_events row yet (or a failed one
    that wasn't user-edited), classify each into a top-level category (and a
    sub-category within it, where known), extract structured fields from
    event_summary using vLLM, and write the result into processed_events
@@ -63,21 +63,26 @@ MAX_PAGES = 1000  # safety cap, not an expected ceiling
 # ---------------------------------------------------------------------------
 # Fetch new events from the source API into raw_events
 # ---------------------------------------------------------------------------
-def fetch_events(start: str) -> list:
+def fetch_events(start: str, page_size: int | None = None) -> list:
     if config.USE_SAMPLE_DATA:
         log(f"[data] USE_SAMPLE_DATA=true -> reading {config.SAMPLE_DATA_FILE}")
-        return json.loads(config.SAMPLE_DATA_FILE.read_text(encoding="utf-8"))
+        events = json.loads(config.SAMPLE_DATA_FILE.read_text(encoding="utf-8"))
+        # The sample file predates `actor`; treat it as approved so the demo still shows data.
+        for event in events:
+            event.setdefault("actor", config.APPROVED_ACTOR)
+        return events
 
     url = f"{config.API_BASE_URL}{config.EVENTS_PATH}"
     all_events = []
     page = 1
     while page <= MAX_PAGES:
         # No category filter: the source category is usually empty, so the
-        # classifier assigns it instead.
+        # classifier assigns it instead. soc_manager=true: approved versions only.
         params = {
             config.START_PARAM: start,
+            "soc_manager": "true",
             "page": page,
-            "page_size": config.EVENTS_PAGE_SIZE,
+            "page_size": page_size or config.EVENTS_PAGE_SIZE,
         }
         log(f"[api] GET {url} params={params}")
         resp = requests.get(url, params=params, timeout=config.REQUEST_TIMEOUT)
@@ -86,7 +91,7 @@ def fetch_events(start: str) -> list:
         if not batch:
             break
         all_events.extend(batch)
-        if len(batch) < config.EVENTS_PAGE_SIZE:
+        if len(batch) < params["page_size"]:
             break  # last page
         page += 1
     return all_events
@@ -104,7 +109,7 @@ def fetch_new_events(db: Session) -> dict:
     stored_count = 0
     latest_time = None
 
-    for event in events:
+    for event in crud.sort_oldest_first(events):
         reference = event.get("reference")
         if not reference:
             continue
@@ -209,6 +214,7 @@ def fetch_unclassified(db: Session, limit: int) -> list[models.RawEvent]:
     return (
         db.query(models.RawEvent)
         .outerjoin(models.ProcessedEvent, models.ProcessedEvent.reference == models.RawEvent.reference)
+        .filter(models.RawEvent.approved.is_(True))
         .filter(
             (models.ProcessedEvent.id.is_(None))
             | (
@@ -341,6 +347,7 @@ def backfill_all(db: Session) -> dict:
         db.query(models.RawEvent)
         .outerjoin(models.ProcessedEvent, models.ProcessedEvent.reference == models.RawEvent.reference)
         .filter(or_(models.ProcessedEvent.id.is_(None), models.ProcessedEvent.is_edited.is_(False)))
+        .filter(models.RawEvent.approved.is_(True))
     )
     total = candidates.count()
     log(f"[backfill] re-classifying {total} record(s)")
@@ -398,7 +405,7 @@ def recheck_recent(db: Session) -> dict:
         return {"fetched": 0, "changed": 0, "new": 0}
 
     changed = new = 0
-    for event in events:
+    for event in crud.sort_oldest_first(events):
         reference = event.get("reference")
         if not reference:
             continue

@@ -8,8 +8,10 @@ load_dotenv(BASE_DIR / ".env")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://morour:morour@db:5432/morour")
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://172.19.0.37:8003").rstrip("/")
-EVENTS_PATH = os.getenv("EVENTS_PATH", "/events")
+API_BASE_URL = os.getenv("API_BASE_URL", "http://172.19.0.37:8009").rstrip("/")
+# Approved reports only (actor SOC_Manager); the worker adds soc_manager=true.
+EVENTS_PATH = os.getenv("EVENTS_PATH", "/approved_events")
+APPROVED_ACTOR = "SOC_Manager"
 START_PARAM = os.getenv("START_PARAM", "start")
 DEFAULT_START_DATE = os.getenv("START_DATE", "2026-08-18T00:00:00")
 CATEGORY = os.getenv("CATEGORY", "أحداث مرورية")
